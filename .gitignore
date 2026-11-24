@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 build/
 dist/
+
+# Owner-specific notes (addresses, serials, album names). Never commit.
+private/

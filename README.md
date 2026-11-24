@@ -16,7 +16,8 @@ container, for example on a NAS.
 
 See [PLAN.md](PLAN.md) for the plan, [docs/decisions.md](docs/decisions.md) for why
 it looks like this, [docs/hosted-auth.md](docs/hosted-auth.md) for the planned
-hosted Google sign-in, and [docs/roadmap.md](docs/roadmap.md) for where it's going
+hosted Google sign-in, [docs/cozyla-frame.md](docs/cozyla-frame.md) for Cozyla
+discovery and security, and [docs/roadmap.md](docs/roadmap.md) for where it's going
 (including Home Assistant).
 
 **Status:** the Ambient API returns 403 for projects outside Google's partner
@@ -57,9 +58,11 @@ Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
    the last two snapshots.
 4. **Frames → Add a frame** for each screen: its type, the albums it shows (none
    ticked means all) and, for slideshows, its display settings. **Check**
-   confirms the worker can reach it. For `cozyla_adb`, the first time, the frame
-   shows an "Allow USB debugging?" prompt. Tick "Always allow" and check again;
-   the key is kept in `data/.android/`. For `folder`,
+   confirms the worker can reach it. For `cozyla_adb`, a Cozyla connects without
+   asking: its adb has no authentication and runs as root, so keep it on an
+   isolated network ([docs/cozyla-frame.md](docs/cozyla-frame.md)). Other Android
+   frames show an "Allow USB debugging?" prompt the first time; tick "Always
+   allow" and check again (the key is kept in `data/.android/`). For `folder`,
    mount the folder in `docker-compose.yml`. For `web`, the dashboard shows the
    frame's slideshow link and a QR code.
 

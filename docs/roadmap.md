@@ -52,6 +52,8 @@ shows up.
 
 | Item | Status | Notes |
 |---|---|---|
+| Discover frames on the network | later | Instead of fixed IPs. Probe TCP 5555, identify Cozylas by `getprop` model and remember each by serial, so a new DHCP address is found again. mDNS doesn't help (see [cozyla-frame.md](cozyla-frame.md#finding-frames-on-a-network)). Could offer "Add this frame" on the dashboard. |
+| Lock down Cozyla adb from the worker | idea | On each connect, add an `iptables` rule on the frame allowing only the worker. A backup to network isolation ([cozyla-frame.md](cozyla-frame.md#recommendations)). |
 | Generic Android frames over adb | later | Most of `cozyla_adb` already applies; the folder and the app's library differ. |
 | Cozyla plays the `web` slideshow | idea | The frame has WebView 106; adb could open the slideshow link in a kiosk browser and skip the Cozyla app's database entirely. An alternative to PLAN.md phase 3. |
 | Slideshow extras | idea | Clock or date overlay, quiet hours (dim or blank screen), photo date and place captions, transition choices. |
