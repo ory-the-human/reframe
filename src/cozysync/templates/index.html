@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section>
+  <h2>Setup</h2>
+  <p>Source: <b>{{ cfg.source }}</b> · Frame: <b>{{ cfg.frame }}</b>
+    <a class="muted" href="{{ url_for('settings') }}" style="margin-left:8px">change</a></p>
+</section>
+
+{% if cfg.source == "google_ambient" %}
+{# Google Photos Ambient: OAuth client and sign-in #}
+{% if not cfg.has_client %}
+<section>
+  <h2>1. Google OAuth client <span class="badge warn">needed</span></h2>
+  <p>Add the client ID and secret from your Google Cloud project to get started.</p>
+  <p><a class="button" href="{{ url_for('settings') }}">Open settings</a></p>
+</section>
+{% else %}
+
+{# 2. Google account / sign-in flow #}
+<section id="account">
+  {% if login and login.active %}
+    <h2>Connecting Google Photos <span class="badge warn">in progress</span></h2>
+    {% if login.step == "starting" %}
+      <p>Requesting a sign-in code…</p>
+    {% elif login.step == "awaiting_signin" %}
+      <p>On your phone or computer, open <a href="{{ login.verification_url }}" target="_blank" rel="noopener">{{ login.verification_url }}</a>
+         and enter this code:</p>
+      <div class="row">
+        <span class="code usercode">{{ login.user_code }}</span>
+        <div class="qr">{{ qr_svg(login.verification_url) }}</div>
+      </div>
+      <p class="muted">Google will also ask you to pick the albums for the frame. This page updates by itself.</p>
+    {% elif login.step == "registering" %}
+      <p>Signed in. Registering the frame with Google Photos…</p>
+    {% elif login.step == "awaiting_albums" %}
+      <p>Almost there: pick the albums to show on the frame in Google Photos.</p>
+      <div class="row">
+        <a class="button" href="{{ login.settings_uri }}" target="_blank" rel="noopener">Choose albums</a>
+        <div class="qr">{{ qr_svg(login.settings_uri) }}</div>
+      </div>
+    {% endif %}
+    <script>
+      // Reload when the sign-in flow advances.
+      const step = {{ login.step | tojson }};
+      setInterval(async () => {
+        const r = await fetch("{{ url_for('login_status') }}");
+        if ((await r.json()).step !== step) location.reload();
+      }, 3000);
+    </script>
+  {% else %}
+    {% if login and login.step == "error" %}
+      <div class="flash error">Sign-in failed: {{ login.error }}
+        <form class="inline" method="post" action="{{ url_for('login_dismiss') }}"><button class="secondary">Dismiss</button></form>
+      </div>
+    {% endif %}
+    {% if account.signed_in %}
+      <h2>2. Google Photos <span class="badge ok">connected</span></h2>
+      {% if account.token_age_days is defined %}
+        <p class="muted">Signed in {{ "%.1f"|format(account.token_age_days) }} days ago.
+          {% if account.token_age_days > 6 %}<span class="warn">If the OAuth app is still in Testing mode, the sign-in expires at 7 days.</span>{% endif %}
+        </p>
+      {% endif %}
+      {% if account.device_error %}
+        <p class="error">Couldn't load the frame's Google Photos device: {{ account.device_error }}</p>
+      {% elif account.device %}
+        {% set d = account.device %}
+        <p>Device <b>{{ d.displayName }}</b></p>
+        {% if d.mediaSources %}
+          <table>
+            <tr><th>Album</th><th>Source id</th></tr>
+            {% for s in d.mediaSources %}<tr><td>{{ s.displayName }}</td><td><code>{{ s.id }}</code></td></tr>{% endfor %}
+          </table>
+        {% else %}
+          <p class="warn">No albums picked yet.</p>
+        {% endif %}
+        <p style="margin-top:12px">
+          <a class="button" href="{{ d.settingsUri }}" target="_blank" rel="noopener">Change albums</a>
+        </p>
+      {% endif %}
+      <p style="margin-top:12px">
+        <form class="inline" method="post" action="{{ url_for('login_start') }}"><button class="secondary">Sign in again</button></form>
+        <form class="inline" method="post" action="{{ url_for('signout') }}"><button class="secondary">Sign out</button></form>
+        <form class="inline" method="post" action="{{ url_for('signout') }}"
+              onsubmit="return confirm('Remove this frame from Google Photos? You will need to pick albums again.')">
+          <input type="hidden" name="forget_device" value="1"><button class="danger">Sign out and remove device</button>
+        </form>
+      </p>
+    {% else %}
+      <h2>2. Google Photos <span class="badge warn">not connected</span></h2>
+      <p>Sign in with the Google account that owns the albums. It must be a test user on the OAuth consent screen.</p>
+      <p class="muted">The Ambient API only works for projects accepted into the Google Photos partner program;
+        others get "permission denied" when the frame is registered.</p>
+      <form method="post" action="{{ url_for('login_start') }}"><button>Connect Google Photos</button></form>
+    {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+{% endif %}
+
+{# Listing test #}
+{% if cfg.source != "google_ambient" or (account and account.signed_in and account.device) %}
+<section id="test">
+  <h2>3. Listing test</h2>
+  <p class="muted">Lists every selected album in full and saves a snapshot.
+    To test change detection: run it, add or remove a photo in an album, then run it again.</p>
+  <form method="post" action="{{ url_for('test_list') }}" class="check">
+    <p>Download samples per album <input type="number" name="download" value="0" min="0" max="10"></p>
+    <p><button>Run listing</button></p>
+  </form>
+
+  {% if listing %}
+    <h2 style="margin-top:18px">Last run <span class="muted" style="font-weight:400">{{ listing.taken_at }}</span></h2>
+    <table>
+      <tr><th>Album</th><th>Items</th><th>Types</th></tr>
+      {% for s in listing.albums %}
+      <tr>
+        <td>{{ s.name }}</td>
+        <td>{{ s.count }}{% if not s.complete %} <span class="warn">(incomplete)</span>{% endif %}</td>
+        <td>{% for m, n in s.mimes %}{{ m }} × {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      </tr>
+      {% for r in s.samples %}
+      <tr><td></td><td colspan="2" class="muted">
+        {% if r.file %}sample {{ r.file }} · {{ r.kb }} KB
+        {% else %}<span class="error">sample download failed: {{ r.error }}</span>{% endif %}
+      </td></tr>
+      {% endfor %}
+      {% endfor %}
+    </table>
+  {% endif %}
+
+  {% if latest_diff %}
+    {% set old_path, new_path, changes = latest_diff %}
+    <h2 style="margin-top:18px">Changes between the last two snapshots</h2>
+    <p class="muted"><code>{{ old_path.name }}</code> → <code>{{ new_path.name }}</code></p>
+    {% for c in changes %}
+      {% if c.only_in %}
+        <p><b>{{ c.album }}</b>: only in the {{ c.only_in }} snapshot</p>
+      {% else %}
+        <p><b>{{ c.album }}</b>: {{ c.old_count }} → {{ c.new_count }} items,
+          <span class="ok">+{{ c.added|length }}</span> <span class="error">−{{ c.removed|length }}</span>
+          {% if not c.reliable %}<span class="warn">(a listing was incomplete, so removals are unreliable)</span>{% endif %}</p>
+        {% if c.added %}<ul class="ids">{% for i in c.added %}<li class="ok"><code>{{ i }}</code></li>{% endfor %}</ul>{% endif %}
+        {% if c.removed %}<ul class="ids">{% for i in c.removed %}<li class="error"><code>{{ i }}</code></li>{% endfor %}</ul>{% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+</section>
+{% endif %}
+
+{# Frame #}
+<section id="frame">
+  {% if cfg.frame == "web" %}
+  <h2>Frame <span class="muted" style="font-weight:400">browser slideshow</span></h2>
+  <p>Open this link full screen on any kiosk browser, tablet, TV browser or web view:</p>
+  <div class="row">
+    <a class="code" href="{{ slideshow_url }}" target="_blank" rel="noopener">{{ slideshow_url }}</a>
+    <div class="qr">{{ qr_svg(slideshow_url) }}</div>
+  </div>
+  <p class="muted">The link is the password, so share it only with your screens. Display settings
+    ({{ cfg.display.interval }}s per photo, {{ cfg.display.layout }}, {{ cfg.display.orientation }}) are in
+    <a href="{{ url_for('settings') }}">settings</a>. One screen can override them by adding e.g.
+    <code>?interval=10&amp;layout=pair&amp;orientation=portrait&amp;shuffle=no</code> to its link.</p>
+  {% else %}
+  <h2>Frame <span class="muted" style="font-weight:400"><code>{{ cfg.frame_address if cfg.frame == "cozyla_adb" else cfg.frame_folder }}</code></span></h2>
+  {% endif %}
+  {% if cfg.frame == "cozyla_adb" %}
+  <p class="muted">The first connection from this server shows an "Allow USB debugging?" prompt on the frame.
+    Tick "Always allow", then check again.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('frame_check') }}"><button class="secondary">Check connection</button></form>
+  {% if frame_check %}
+    {% if frame_check.ok %}
+      <table style="margin-top:10px">{% for k, v in frame_check.info.items() %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}</table>
+    {% else %}
+      <p class="error" style="margin-top:10px">{{ frame_check.error }}</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

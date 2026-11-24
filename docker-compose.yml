@@ -1,0 +1,16 @@
+services:
+  cozysync:
+    build: .
+    image: cozysync:latest
+    container_name: cozysync
+    env_file: .env
+    ports:
+      - "1992:1992"   # web UI for setup and sign-in
+    volumes:
+      # Holds OAuth tokens, the Ambient device id, adb keys and sync state.
+      # Photos are pass-through (temp file -> frame) and aren't kept here.
+      - ./data:/data
+      # For FRAME=folder: mount the share or folder the display reads from.
+      # - /path/to/frame-folder:/frame
+    # Runs the web UI by default. The sync loop joins it in phase 4.
+    restart: unless-stopped

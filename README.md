@@ -1,0 +1,119 @@
+# cozysync
+
+A self-hosted worker that syncs photo albums to photo frames. Photo **sources**
+and **frames** are plug-ins:
+
+| Sources | Frames |
+|---|---|
+| `google_ambient`: Google Photos via the [Photos Ambient API](https://developers.google.com/photos/ambient/guides/about) (needs the Google Photos partner program) | `cozyla_adb`: a Cozyla (or rooted Android) frame over adb on Wi-Fi |
+| next: Google Photos share link, Immich | `folder`: any folder or mounted share a display reads from |
+| | `web`: a full-screen browser slideshow served by cozysync, for any kiosk browser, tablet, TV browser or web view |
+
+Pick them with `SOURCE` and `FRAME` in `.env`, or in the web UI's settings. It runs
+as a Docker container, for example on a NAS.
+
+See [PLAN.md](PLAN.md) for the plan, [docs/decisions.md](docs/decisions.md) for why
+it looks like this, [docs/hosted-auth.md](docs/hosted-auth.md) for the planned
+hosted Google sign-in, and [docs/roadmap.md](docs/roadmap.md) for where it's going
+(including Home Assistant).
+
+**Status:** the Ambient API returns 403 for projects outside Google's partner
+program, so the Google setup below only works for an accepted project. A second
+source is next.
+
+## 1. Google Cloud setup (one time, `google_ambient` source only)
+
+1. Go to <https://console.cloud.google.com/> and create a project, e.g. `cozysync`.
+2. **APIs & Services → Library**: search for **Photos Ambient API** and click **Enable**.
+3. **APIs & Services → OAuth consent screen** (Google Auth Platform):
+   - User type **External**, app name `cozysync`, with your email as support and
+     developer contact.
+   - **Data access / Scopes**: add `https://www.googleapis.com/auth/photosambient.mediaitems`.
+   - **Audience / Test users**: add your own Google account.
+   - The project must be accepted into the
+     [Google Photos partner program](https://developers.google.com/photos/partner-program/overview);
+     otherwise registering the frame fails with 403 `PERMISSION_DENIED`.
+4. **Credentials → Create credentials → OAuth client ID**, application type
+   **TVs and Limited Input devices**. Copy the client ID and secret.
+
+## 2. Start it on the NAS
+
+```sh
+cp .env.example .env   # set WEB_PASSWORD; everything else can be done in the UI
+docker compose up -d --build
+```
+
+Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
+
+1. **Settings**: paste the OAuth client ID and secret.
+2. **Connect Google Photos**: the dashboard shows a code and a QR code. Sign in
+   on your phone with the test-user account and pick the albums for the frame.
+   The page updates by itself as each step finishes.
+3. **Listing test**: lists every album in full and saves a snapshot to `data/`.
+   Set "Download samples" above 0 to fetch a few files sized for the frame. Run it
+   again after adding or removing a photo; the dashboard shows the changes between
+   the last two snapshots.
+4. **Frame → Check connection**: confirms the worker can reach the frame. For
+   `cozyla_adb`, the first time, the frame shows an "Allow USB debugging?" prompt.
+   Tick "Always allow" and check again. The key is kept in `data/.android/`. For
+   `folder`, mount the folder in `docker-compose.yml` and set `FRAME_FOLDER`. For
+   `web`, the dashboard shows the slideshow link and a QR code.
+
+### Browser slideshow (`FRAME=web`)
+
+Open the slideshow link from the dashboard on any screen with a browser. It plays
+full screen, fades between photos, picks up new photos and setting changes within
+a minute, and plays videos muted.
+
+- **Display settings** (Settings → Display) apply to every screen: seconds per
+  photo, one photo or two, orientation, shuffle.
+- **Two photos:** when a photo's orientation doesn't match the screen (portrait
+  photos on a landscape screen), two of them share it, side by side or stacked.
+- **Orientation:** "Follow the screen" uses what the browser reports. If a screen
+  is mounted sideways and its browser doesn't rotate, pick the orientation and the
+  slideshow rotates itself.
+- **Per-screen overrides:** add them to the link, e.g.
+  `?interval=10&layout=pair&orientation=portrait&shuffle=no`.
+- The link contains a secret instead of the UI password, because kiosk browsers
+  can't answer a password prompt. Only give it to your screens.
+
+`cozysync frame-put photo.jpg …` copies files to the configured frame by hand,
+which is handy for trying the slideshow before the sync engine exists.
+
+### CLI
+
+The same steps are available on the command line, which is handy when testing
+from a laptop:
+
+```sh
+docker compose run --rm cozysync login         # google_ambient: sign in, pick albums
+docker compose run --rm cozysync device        # google_ambient: device, albums, token age
+docker compose run --rm cozysync list --download 3
+docker compose run --rm cozysync diff          # compare the last two snapshots
+docker compose run --rm cozysync frame-check
+docker compose run --rm cozysync frame-put /data/samples/*.jpg   # copy files to the frame
+```
+
+Running locally without Docker (Python 3.9+):
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install -e .
+DATA_DIR=./data .venv/bin/cozysync web --port 1992
+```
+
+## Notes
+
+- Photos are pass-through: the sync streams each one to the frame and keeps
+  only state on the NAS. `data/samples/` is only for the listing test.
+- `data/` holds OAuth tokens and the OAuth client secret. It's git-ignored and
+  written with `0600` permissions.
+- The web UI is for the LAN only; don't expose port 1992 to the internet. Set
+  `WEB_PASSWORD`, because without it anyone on your network can use the UI.
+  Cross-site form posts are rejected.
+- Adding a source: implement `Source` from `src/cozysync/sources/base.py` and
+  register it in `sources/__init__.py`. Adding a frame: implement `Frame` from
+  `src/cozysync/frames/base.py` and register it in `frames/__init__.py`.
+- The Ambient API allows 240 `mediaItems.list` calls per device per day, with up
+  to 100 items per call.
+- While the OAuth app is in **Testing** status, Google's refresh tokens expire
+  after 7 days. `cozysync device` prints the token's age so we can confirm this.

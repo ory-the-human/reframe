@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <form method="post">
+    <h2>Source and frame</h2>
+    <label for="source">Photo source</label>
+    <select id="source" name="source">
+      {% for kind, label in source_kinds.items() %}<option value="{{ kind }}" {{ "selected" if kind == cfg.source }}>{{ label }}</option>{% endfor %}
+    </select>
+
+    <label for="frame">Frame type</label>
+    <select id="frame" name="frame">
+      {% for kind, label in frame_kinds.items() %}<option value="{{ kind }}" {{ "selected" if kind == cfg.frame }}>{{ label }}</option>{% endfor %}
+    </select>
+
+    <label for="frame_folder">Folder (for the folder frame type)</label>
+    <input type="text" id="frame_folder" name="frame_folder" value="{{ cfg.frame_folder }}">
+    <p class="muted">A path inside the container; mount your share or USB drive there.</p>
+
+    <h2 style="margin-top:24px">Display</h2>
+    <p class="muted">How photos are shown on frames that run the cozysync slideshow (the browser slideshow frame).</p>
+    <label for="display_interval">Seconds per photo</label>
+    <input type="number" id="display_interval" name="display_interval" value="{{ cfg.display.interval }}" min="3" max="3600">
+
+    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order")] %}
+    <label for="{{ key }}">{{ label }}</label>
+    <select id="{{ key }}" name="{{ key }}">
+      {% for value, text in display_choices[key].items() %}<option value="{{ value }}" {{ "selected" if value == cfg[key] }}>{{ text }}</option>{% endfor %}
+    </select>
+    {% endfor %}
+    <p class="muted">"Follow the screen" uses the orientation the browser reports. Pick one when a
+      screen is mounted sideways but the browser doesn't rotate; the slideshow then rotates itself.</p>
+
+    <h2 style="margin-top:24px">Google Photos (Ambient API)</h2>
+    <p class="muted">Create an OAuth client in the Google Cloud console under Credentials → OAuth client ID,
+      with application type <b>TVs and Limited Input devices</b>, in a project with the
+      <b>Photos Ambient API</b> enabled. The project must be accepted into the Google Photos partner program.</p>
+    <label for="client_id">Client ID</label>
+    <input type="text" id="client_id" name="client_id" value="{{ cfg.client_id }}" autocomplete="off">
+
+    <label for="client_secret">Client secret</label>
+    <input type="password" id="client_secret" name="client_secret" autocomplete="new-password"
+           placeholder="{{ 'Saved; leave blank to keep it' if cfg.client_secret else '' }}">
+
+    <label for="device_name">Device name in Google Photos</label>
+    <input type="text" id="device_name" name="device_name" value="{{ cfg.device_name }}" maxlength="100">
+    <p class="muted">Used when the device is first registered. Changing it later doesn't rename an existing device.</p>
+
+    <h2 style="margin-top:24px">Cozyla frame</h2>
+    <label for="frame_address">Frame ADB address</label>
+    <input type="text" id="frame_address" name="frame_address" value="{{ cfg.frame_address }}">
+
+    <p style="margin-top:18px"><button type="submit">Save</button></p>
+  </form>
+</section>
+{% endblock %}

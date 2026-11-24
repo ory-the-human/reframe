@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>cozysync slideshow</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+    #stage { position: absolute; left: 50%; top: 50%; overflow: hidden; }
+    .slide { position: absolute; inset: 0; display: flex; gap: 0.5%; opacity: 0;
+             transition: opacity 1.2s ease; }
+    .slide.shown { opacity: 1; }
+    .slide.column { flex-direction: column; }
+    .slide img, .slide video { flex: 1 1 0; min-width: 0; min-height: 0; width: 100%; height: 100%;
+                               object-fit: contain; }
+    #message { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+               color: #888; font: 18px system-ui, sans-serif; text-align: center; padding: 24px; }
+  </style>
+</head>
+<body>
+<div id="stage"><div id="message">Loading…</div></div>
+<script>
+(function () {
+  "use strict";
+  var base = {{ url_for('slideshow', key=key) | tojson }};
+  var params = new URLSearchParams(location.search);
+  var stage = document.getElementById("stage");
+  var message = document.getElementById("message");
+  var REFRESH_MS = 60 * 1000;
+  var MAX_VIDEO_MS = 5 * 60 * 1000;
+
+  var display = null;   // settings from the server, with URL overrides applied
+  var items = [];       // [{name, type}]
+  var queue = [];       // names still to show this round
+  var timer = null;
+  var current = null;   // the slide element on screen
+
+  // Each screen can override the shared settings: ?interval=10&layout=pair&orientation=portrait&shuffle=no
+  function applyOverrides(d) {
+    var out = Object.assign({}, d);
+    if (params.get("interval")) out.interval = Math.max(3, parseInt(params.get("interval"), 10) || d.interval);
+    if (params.get("layout")) out.layout = params.get("layout");
+    if (params.get("orientation")) out.orientation = params.get("orientation");
+    if (params.get("shuffle")) out.shuffle = params.get("shuffle") !== "no";
+    return out;
+  }
+
+  // Orientation: "auto" follows the screen. A fixed choice that doesn't match what
+  // the browser reports rotates the picture, for screens mounted sideways.
+  function screenIsPortrait() { return window.innerHeight > window.innerWidth; }
+
+  function targetIsPortrait() {
+    var o = display ? display.orientation : "auto";
+    if (o === "auto") return screenIsPortrait();
+    return o.indexOf("portrait") === 0;
+  }
+
+  function layoutStage() {
+    var o = display ? display.orientation : "auto";
+    var flipped = /-flipped$/.test(o);
+    var mismatch = o !== "auto" && targetIsPortrait() !== screenIsPortrait();
+    var angle = mismatch ? (flipped ? 270 : 90) : (flipped ? 180 : 0);
+    var w = window.innerWidth, h = window.innerHeight;
+    if (mismatch) { var t = w; w = h; h = t; }
+    stage.style.width = w + "px";
+    stage.style.height = h + "px";
+    stage.style.transform = "translate(-50%, -50%) rotate(" + angle + "deg)";
+  }
+
+  function shuffled(list) {
+    var a = list.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  function byName(name) {
+    for (var i = 0; i < items.length; i++) if (items[i].name === name) return items[i];
+    return null;
+  }
+
+  function nextItem() {
+    // Drop names that were removed since the queue was built.
+    while (queue.length && !byName(queue[0])) queue.shift();
+    if (!queue.length) {
+      var names = items.map(function (i) { return i.name; });
+      queue = display.shuffle ? shuffled(names) : names;
+    }
+    return queue.length ? byName(queue.shift()) : null;
+  }
+
+  function peekItem() {
+    while (queue.length && !byName(queue[0])) queue.shift();
+    return queue.length ? byName(queue[0]) : null;
+  }
+
+  function mediaUrl(item) { return base + "/media/" + encodeURIComponent(item.name); }
+
+  function loadImage(item) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { resolve(null); };
+      img.src = mediaUrl(item);
+    });
+  }
+
+  function isPortrait(img) { return img.naturalHeight > img.naturalWidth; }
+
+  // A photo "fits badly" when its orientation is the opposite of the screen's,
+  // e.g. a portrait photo on a landscape frame. Two of those share the screen.
+  function fitsBadly(img) { return isPortrait(img) !== targetIsPortrait(); }
+
+  function show(elements, stacked) {
+    var slide = document.createElement("div");
+    slide.className = "slide" + (stacked ? " column" : "");
+    elements.forEach(function (el) { slide.appendChild(el); });
+    stage.appendChild(slide);
+    message.style.display = "none";
+    // Force a layout so the fade-in transition runs.
+    void slide.offsetWidth;
+    slide.classList.add("shown");
+    var old = current;
+    current = slide;
+    if (old) setTimeout(function () { old.remove(); }, 1300);
+  }
+
+  function schedule(ms) {
+    clearTimeout(timer);
+    timer = setTimeout(advance, ms);
+  }
+
+  function showVideo(item) {
+    var video = document.createElement("video");
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.src = mediaUrl(item);
+    video.onended = function () { schedule(0); };
+    video.onerror = function () { schedule(0); };
+    show([video], false);
+    schedule(MAX_VIDEO_MS);
+  }
+
+  function advance() {
+    if (!items.length) {
+      message.textContent = "No photos yet. They appear here once cozysync has synced some.";
+      message.style.display = "flex";
+      if (current) { current.remove(); current = null; }
+      schedule(REFRESH_MS);
+      return;
+    }
+    var item = nextItem();
+    if (item.type === "video") { showVideo(item); return; }
+    loadImage(item).then(function (img) {
+      if (!img) { schedule(0); return; }
+      var candidate = display.layout === "pair" && fitsBadly(img) ? peekItem() : null;
+      var second = candidate && candidate.type === "image" && candidate.name !== item.name
+        ? loadImage(candidate) : Promise.resolve(null);
+      return second.then(function (img2) {
+        if (img2 && fitsBadly(img2)) {
+          queue.shift();
+          // Side by side on a landscape screen, stacked on a portrait one.
+          show([img, img2], targetIsPortrait());
+        } else {
+          show([img], false);
+        }
+        schedule(display.interval * 1000);
+      });
+    });
+  }
+
+  function refresh(first) {
+    return fetch(base + "/playlist", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var before = display ? JSON.stringify(display) : null;
+        display = applyOverrides(data.display);
+        items = data.items;
+        if (before !== JSON.stringify(display)) { queue = []; layoutStage(); }
+        if (first) advance();
+      })
+      .catch(function () {
+        // Keep showing what we have; try again later.
+        if (first) { message.textContent = "Can't reach cozysync. Retrying…"; setTimeout(function () { refresh(true); }, 10000); }
+      });
+  }
+
+  window.addEventListener("resize", layoutStage);
+  window.addEventListener("orientationchange", layoutStage);
+  document.addEventListener("click", function () {
+    var el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(function () {});
+  });
+
+  // Keep the screen on where the browser allows it (needs HTTPS or localhost).
+  function keepAwake() {
+    if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(function () {});
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) keepAwake(); });
+  keepAwake();
+
+  layoutStage();
+  refresh(true);
+  setInterval(function () { refresh(false); }, REFRESH_MS);
+})();
+</script>
+</body>
+</html>
