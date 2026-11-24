@@ -128,8 +128,9 @@ keeping up with Google's policies.
 - Is `photosambient.mediaitems` a sensitive or a restricted scope?
 - Does the integration review allow access tokens issued by the broker to be
   used from the user's own machine?
-- Does the 240 calls per device per day quota apply per Ambient device (one per
-  frame), as the docs suggest?
+- Does Google expect one Ambient device per physical screen? We register one
+  per Google account and drive several frames from it (decisions.md, entry 5);
+  ask during the integration review.
 - Where to host the broker, and who pays for it.
 - The name: "cozysync" is tied to Cozyla, but the worker supports any frame.
 

@@ -15,6 +15,7 @@ scheduled), **idea** (worth recording, undecided).
 | Sync engine (pass-through, safe removal) | now | PLAN.md phase 2. Uses only the `Source` and `Frame` interfaces. |
 | Show synced photos in the Cozyla app | next | PLAN.md phase 3, option A (ItemEntry rows) or B (screensaver). |
 | Unattended loop, health, alerts | next | PLAN.md phase 4. |
+| Several frames per worker | done | Each with its own type, albums and display settings ([decisions.md](decisions.md), entry 5). |
 | Browser slideshow frame (`web`) | done | Full-screen slideshow for any browser, with shared display settings and per-screen overrides. |
 
 ## Google Photos for everyone (hosted auth)
@@ -53,7 +54,6 @@ shows up.
 |---|---|---|
 | Generic Android frames over adb | later | Most of `cozyla_adb` already applies; the folder and the app's library differ. |
 | Cozyla plays the `web` slideshow | idea | The frame has WebView 106; adb could open the slideshow link in a kiosk browser and skip the Cozyla app's database entirely. An alternative to PLAN.md phase 3. |
-| Several frames per worker | later | Today one worker drives one frame. Several frames, each with its own albums and display settings. |
 | Slideshow extras | idea | Clock or date overlay, quiet hours (dim or blank screen), photo date and place captions, transition choices. |
 | DLNA/UPnP media server | idea | Many TVs and frames can browse a DLNA server. The worker would serve the synced folder. |
 | Chromecast / Google TV slideshow | idea | Directly, or through the HA `media_player` adapter above. |

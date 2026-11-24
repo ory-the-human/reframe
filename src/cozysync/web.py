@@ -20,6 +20,7 @@ from flask import Flask, Response, abort, flash, redirect, render_template, requ
 from markupsafe import Markup
 
 from . import config, frames, snapshots, sources
+from .frames import registry
 from .frames import web as web_frame
 from .sources.google_ambient.api import AmbientClient
 from .sources.google_ambient.auth import TokenStore
@@ -32,7 +33,7 @@ _login_lock = threading.Lock()
 _login: Optional[LoginFlow] = None
 # Results of the last test run, kept in memory to render on the dashboard.
 _last_listing: Optional[dict[str, Any]] = None
-_last_frame_check: Optional[dict[str, Any]] = None
+_frame_checks: dict[str, dict[str, Any]] = {}  # by frame id
 
 
 def _secret_key() -> bytes:
@@ -111,8 +112,7 @@ def index():
         login=_login,
         listing=_last_listing,
         latest_diff=snapshots.diff_latest(cfg),
-        frame_check=_last_frame_check,
-        slideshow_url=_slideshow_url(cfg) if cfg.frame == "web" else None,
+        frames=[_frame_view(cfg, f) for f in frames.load_all(cfg)],
     )
 
 
@@ -120,10 +120,7 @@ def index():
 def settings():
     cfg = config.load()
     if request.method == "POST":
-        fields = (
-            "source", "frame", "frame_folder", "client_id", "device_name", "frame_address",
-            "display_interval", "display_layout", "display_orientation", "display_shuffle",
-        )
+        fields = ("source", "client_id", "device_name", *config.DISPLAY_KEYS)
         updates = {k: request.form.get(k, "").strip() for k in fields}
         # The secret is write-only: blank means keep the current one.
         if request.form.get("client_secret", "").strip():
@@ -135,7 +132,6 @@ def settings():
         "settings.html",
         cfg=cfg,
         source_kinds=sources.KINDS,
-        frame_kinds=frames.KINDS,
         display_choices=config.DISPLAY_CHOICES,
     )
 
@@ -193,7 +189,7 @@ def test_list():
     _, snapshot, listings = snapshots.take(cfg, source, source.albums())
 
     n_download = int(request.form.get("download") or 0)
-    max_px = frames.get_frame(cfg).max_px if n_download else 0
+    max_px = frames.largest_max_px(cfg) if n_download else 0
     _last_listing = {
         "taken_at": snapshot["taken_at"],
         "albums": [
@@ -214,46 +210,135 @@ def test_list():
     return redirect(url_for("index") + "#test")
 
 
-@app.post("/frame/check")
-def frame_check():
-    global _last_frame_check
+def _frame_view(cfg: config.Config, frame: registry.FrameConfig) -> dict[str, Any]:
+    return {
+        "frame": frame,
+        "kind_label": registry.KINDS.get(frame.kind, frame.kind),
+        "display": frames.display_for(cfg, frame),
+        "slideshow_url": url_for("slideshow", key=frame.key, _external=True) if frame.kind == "web" else None,
+        "check": _frame_checks.get(frame.id),
+    }
+
+
+def _album_choices(cfg: config.Config, frame: Optional[registry.FrameConfig]) -> tuple[list[dict[str, str]], Optional[str]]:
+    """Albums a frame can pick from, plus an error if the source couldn't be asked."""
+    saved = frame.albums if frame else []
+    try:
+        offered = [{"id": a.id, "name": a.name} for a in sources.get_source(cfg).albums()]
+    except Exception as e:
+        return saved, str(e)
+    # Keep picks the source no longer offers visible, so they can be unticked.
+    known = {a["id"] for a in offered}
+    return offered + [a for a in saved if a["id"] not in known], None
+
+
+def _frame_from_form(frame: registry.FrameConfig) -> registry.FrameConfig:
+    form = request.form
+    frame.name = form.get("name", "").strip()
+    frame.address = form.get("address", "").strip()
+    frame.folder = form.get("folder", "").strip()
+    frame.albums = [{"id": a, "name": form.get(f"album_name_{a}", a)} for a in form.getlist("album")]
+    frame.display = {k: form.get(k, "").strip() for k in config.DISPLAY_KEYS if form.get(k, "").strip()}
+    return frame
+
+
+def _frame_form(cfg: config.Config, frame: registry.FrameConfig, is_new: bool):
+    albums, albums_error = _album_choices(cfg, None if is_new else frame)
+    return render_template(
+        "frame.html",
+        cfg=cfg,
+        frame=frame,
+        is_new=is_new,
+        kinds=registry.KINDS,
+        albums=albums,
+        albums_error=albums_error,
+        display_choices=config.DISPLAY_CHOICES,
+    )
+
+
+@app.route("/frames/new", methods=["GET", "POST"])
+def frame_new():
+    cfg = config.load()
+    kind = request.values.get("kind", "web")
+    frame = registry.FrameConfig(id="", name="", kind=kind if kind in registry.KINDS else "web")
+    if request.method == "POST":
+        _frame_from_form(frame)
+        try:
+            fields = {k: getattr(frame, k) for k in ("address", "folder", "albums", "display")}
+            added = registry.add(cfg, frame.name, frame.kind, **fields)
+        except frames.FrameError as e:
+            flash(str(e), "error")
+            return _frame_form(cfg, frame, is_new=True)
+        flash(f"Added {added.name}.", "ok")
+        return redirect(url_for("index") + "#frames")
+    return _frame_form(cfg, frame, is_new=True)
+
+
+@app.route("/frames/<frame_id>", methods=["GET", "POST"])
+def frame_edit(frame_id: str):
     cfg = config.load()
     try:
-        _last_frame_check = {"ok": True, "info": frames.get_frame(cfg).check()}
-    except Exception as e:
-        _last_frame_check = {"ok": False, "error": str(e)}
-    return redirect(url_for("index") + "#frame")
-
-
-def _slideshow_url(cfg: config.Config) -> str:
-    return url_for("slideshow", key=web_frame.slideshow_key(cfg.data_dir), _external=True)
-
-
-def _check_key(cfg: config.Config, key: str) -> None:
-    if cfg.frame != "web" or not hmac.compare_digest(key, web_frame.slideshow_key(cfg.data_dir)):
+        frame = registry.find(frames.load_all(cfg), frame_id)
+    except frames.FrameError:
         abort(404)
+    if request.method == "POST":
+        _frame_from_form(frame)
+        try:
+            registry.update(cfg, frame)
+        except frames.FrameError as e:
+            flash(str(e), "error")
+            return _frame_form(cfg, frame, is_new=False)
+        flash(f"Saved {frame.name}.", "ok")
+        return redirect(url_for("index") + "#frames")
+    return _frame_form(cfg, frame, is_new=False)
+
+
+@app.post("/frames/<frame_id>/delete")
+def frame_delete(frame_id: str):
+    cfg = config.load()
+    registry.remove(cfg, frame_id)
+    _frame_checks.pop(frame_id, None)
+    flash("Frame removed.", "ok")
+    return redirect(url_for("index") + "#frames")
+
+
+@app.post("/frames/<frame_id>/check")
+def frame_check(frame_id: str):
+    cfg = config.load()
+    try:
+        frame = registry.find(frames.load_all(cfg), frame_id)
+        _frame_checks[frame_id] = {"ok": True, "info": frames.build(cfg, frame).check()}
+    except Exception as e:
+        _frame_checks[frame_id] = {"ok": False, "error": str(e)}
+    return redirect(url_for("index") + "#frames")
+
+
+def _web_frame(key: str) -> tuple[config.Config, registry.FrameConfig]:
+    cfg = config.load()
+    frame = registry.by_key(frames.load_all(cfg), key)
+    if frame is None:
+        abort(404)
+    return cfg, frame
 
 
 @app.get("/show/<key>")
 def slideshow(key: str):
-    cfg = config.load()
-    _check_key(cfg, key)
+    _web_frame(key)
     return render_template("slideshow.html", key=key)
 
 
 @app.get("/show/<key>/playlist")
 def slideshow_playlist(key: str):
     # Polled by the slideshow, so new photos and setting changes show up without a reload.
-    cfg = config.load()
-    _check_key(cfg, key)
-    return {"display": cfg.display, "items": web_frame.list_media(web_frame.media_dir(cfg.data_dir))}
+    cfg, frame = _web_frame(key)
+    media = web_frame.list_media(registry.web_media_dir(cfg.data_dir, frame.id))
+    return {"display": frames.display_for(cfg, frame), "items": media}
 
 
 @app.get("/show/<key>/media/<name>")
 def slideshow_media(key: str, name: str):
-    cfg = config.load()
-    _check_key(cfg, key)
-    return send_from_directory(web_frame.media_dir(cfg.data_dir), name, max_age=86400)
+    cfg, frame = _web_frame(key)
+    return send_from_directory(registry.web_media_dir(cfg.data_dir, frame.id), name, max_age=86400)
 
 
 def serve(host: str, port: int) -> None:

@@ -1,6 +1,6 @@
 # Cozyla frame sync — plan
 
-Goal: keep the Cozyla photo frame showing a Google Photos album
+Goal: keep the owner's two Cozyla photo frames showing a Google Photos album
 privately, without a public share link, using a small Docker service on the NAS.
 
 **Direction as of 2026-11-23** (details in [docs/decisions.md](docs/decisions.md)):
@@ -107,10 +107,12 @@ The NAS doesn't keep a copy of the photos. Each one is downloaded to a temp
 file, pushed to the frame, and deleted. The frame holds the only copy. The NAS
 keeps just the state.
 
-State lives in `/data/state.sqlite`, one row per (album, media id):
+State lives in `/data/state.sqlite`, one row per (frame, album, media id). Each run
+lists every album shown by at least one frame once, then updates each frame:
 
 | column        | purpose                                                    |
 |---------------|------------------------------------------------------------|
+| `frame_id`    | which frame has it (see `/data/frames.json`)               |
 | `source_id`   | album (Ambient media source) it belongs to                 |
 | `media_id`    | Ambient item id (persistent across sessions, per the docs) |
 | `frame_path`  | where it lives on the frame                                |
@@ -149,7 +151,8 @@ conservative:
   `MAX_REMOVE_FRACTION` (default 25%) of an album, skip the deletions, log a
   warning, and wait for the next run to confirm.
 - The same photo in two albums is two state rows that share one file on the
-  frame. The file is deleted only when no row references it.
+  frame. The file is deleted only when no row for that frame references it.
+- The mass-removal brake and grace period apply per frame and album.
 
 ### Quota
 

@@ -91,3 +91,32 @@ source or a frame doesn't touch it.
 
 **Why.** It gets the owner's frame working now with a non-Google-API source, and
 none of the work is lost if the partner program says yes or no.
+
+## 5. One worker drives several frames (2026-11-23)
+
+**Decision.** A worker manages a list of frames, not one. Each frame has a name,
+a type and target (adb address, folder, or its own slideshow link), the albums it
+shows (none ticked means all), and display settings that override the defaults.
+Frames live in `/data/frames.json`, managed from the dashboard or `cozysync frames`.
+
+**Why.** Households have more than one screen (the owner already does), and
+running a worker per frame would mean one sign-in and one container per screen.
+
+**Consequences.**
+
+- The sync engine (PLAN.md phase 2) keeps state per frame: what each frame has
+  and when it was last seen in a listing. An album shown on two frames is listed
+  once per run and pushed to both.
+- Display settings resolve in three layers: defaults in settings, the frame's
+  overrides, then the screen's URL parameters.
+- With the Google Ambient source, the worker registers **one** Ambient device
+  per Google account, whatever the number of frames. The user picks albums for
+  it once in Google Photos, and cozysync assigns them to frames. Albums are
+  listed per album and once per run however many frames show them, so quota
+  grows with album size, not frame count. Separate devices per frame would only
+  move album choice into Google Photos, split it across two apps, and multiply
+  sign-in steps.
+- The old single-frame settings (`FRAME`, `FRAME_ADDRESS`, `FRAME_FOLDER`) only
+  create frames on first start (`FRAME_ADDRESS` may list several, comma-separated);
+  existing slideshow links keep working.
+

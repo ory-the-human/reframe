@@ -36,11 +36,17 @@
                   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
     .usercode { font-size: 28px; letter-spacing: 3px; font-weight: 600; padding: 4px 12px; }
     .qr svg { width: 180px; height: 180px; background: #fff; border-radius: 6px; }
+    a { color: var(--accent); }
+    .actions { display: flex; gap: 8px; margin: 8px 0; }
+    .qr.small svg { width: 120px; height: 120px; }
+    .frame { border-top: 1px solid var(--border); padding: 12px 0 4px; }
+    .frame:first-of-type { border-top: 0; padding-top: 0; }
+    .checks label { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 4px 16px 4px 0; }
     .row { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
     form.inline { display: inline; }
     button, .button { font: inherit; background: var(--accent); color: var(--accent-text); border: 0;
                       border-radius: 6px; padding: 7px 14px; cursor: pointer; text-decoration: none; display: inline-block; }
-    button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    button.secondary, .button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
     button.danger { background: transparent; color: var(--error); border: 1px solid var(--error); }
     label { display: block; margin: 12px 0 4px; font-weight: 500; }
     input[type=text], input[type=password], input[type=number], select {

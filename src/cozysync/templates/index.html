@@ -3,7 +3,7 @@
 
 <section>
   <h2>Setup</h2>
-  <p>Source: <b>{{ cfg.source }}</b> · Frame: <b>{{ cfg.frame }}</b>
+  <p>Source: <b>{{ cfg.source }}</b> · Frames: <b>{{ frames|length }}</b>
     <a class="muted" href="{{ url_for('settings') }}" style="margin-left:8px">change</a></p>
 </section>
 
@@ -101,7 +101,7 @@
 {# Listing test #}
 {% if cfg.source != "google_ambient" or (account and account.signed_in and account.device) %}
 <section id="test">
-  <h2>3. Listing test</h2>
+  <h2>Listing test</h2>
   <p class="muted">Lists every selected album in full and saves a snapshot.
     To test change detection: run it, add or remove a photo in an album, then run it again.</p>
   <form method="post" action="{{ url_for('test_list') }}" class="check">
@@ -148,33 +148,44 @@
 </section>
 {% endif %}
 
-{# Frame #}
-<section id="frame">
-  {% if cfg.frame == "web" %}
-  <h2>Frame <span class="muted" style="font-weight:400">browser slideshow</span></h2>
-  <p>Open this link full screen on any kiosk browser, tablet, TV browser or web view:</p>
-  <div class="row">
-    <a class="code" href="{{ slideshow_url }}" target="_blank" rel="noopener">{{ slideshow_url }}</a>
-    <div class="qr">{{ qr_svg(slideshow_url) }}</div>
-  </div>
-  <p class="muted">The link is the password, so share it only with your screens. Display settings
-    ({{ cfg.display.interval }}s per photo, {{ cfg.display.layout }}, {{ cfg.display.orientation }}) are in
-    <a href="{{ url_for('settings') }}">settings</a>. One screen can override them by adding e.g.
+{# Frames #}
+<section id="frames">
+  <h2>Frames <span class="muted" style="font-weight:400">{{ frames|length }}</span></h2>
+  {% if not frames %}
+    <p>No frames yet. Add each screen that should show photos.</p>
+  {% endif %}
+  {% for v in frames %}
+    {% set f = v.frame %}
+    <div class="frame">
+      <p><b>{{ f.name }}</b> <span class="muted">· {{ v.kind_label }}{% if f.kind != "web" %} · <code>{{ f.target }}</code>{% endif %}</span></p>
+      <p class="muted">Albums: {{ f.albums | map(attribute="name") | join(", ") if f.albums else "all" }}
+        {% if f.kind == "web" %} · {{ v.display.interval }}s per photo, {{ v.display.layout }}, {{ v.display.orientation }}{% if f.display %} (own settings){% endif %}{% endif %}</p>
+      {% if f.kind == "web" %}
+        <div class="row" style="margin:8px 0">
+          <a class="code" href="{{ v.slideshow_url }}" target="_blank" rel="noopener">{{ v.slideshow_url }}</a>
+          <div class="qr small">{{ qr_svg(v.slideshow_url) }}</div>
+        </div>
+      {% elif f.kind == "cozyla_adb" %}
+        <p class="muted">The first connection shows an "Allow USB debugging?" prompt on the frame. Tick "Always allow", then check again.</p>
+      {% endif %}
+      <div class="actions">
+        <a class="button secondary" href="{{ url_for('frame_edit', frame_id=f.id) }}">Edit</a>
+        <form class="inline" method="post" action="{{ url_for('frame_check', frame_id=f.id) }}"><button class="secondary">Check</button></form>
+      </div>
+      {% if v.check %}
+        {% if v.check.ok %}
+          <table style="margin-top:6px">{% for k, val in v.check.info.items() %}<tr><th>{{ k }}</th><td>{{ val }}</td></tr>{% endfor %}</table>
+        {% else %}
+          <p class="error">{{ v.check.error }}</p>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% endfor %}
+  <p style="margin-top:12px"><a class="button" href="{{ url_for('frame_new') }}">Add a frame</a></p>
+  {% if frames | selectattr("frame.kind", "equalto", "web") | list %}
+  <p class="muted">A slideshow link is the password for that screen, so share it only with the screen.
+    One screen can override its frame's display settings by adding e.g.
     <code>?interval=10&amp;layout=pair&amp;orientation=portrait&amp;shuffle=no</code> to its link.</p>
-  {% else %}
-  <h2>Frame <span class="muted" style="font-weight:400"><code>{{ cfg.frame_address if cfg.frame == "cozyla_adb" else cfg.frame_folder }}</code></span></h2>
-  {% endif %}
-  {% if cfg.frame == "cozyla_adb" %}
-  <p class="muted">The first connection from this server shows an "Allow USB debugging?" prompt on the frame.
-    Tick "Always allow", then check again.</p>
-  {% endif %}
-  <form method="post" action="{{ url_for('frame_check') }}"><button class="secondary">Check connection</button></form>
-  {% if frame_check %}
-    {% if frame_check.ok %}
-      <table style="margin-top:10px">{% for k, v in frame_check.info.items() %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}</table>
-    {% else %}
-      <p class="error" style="margin-top:10px">{{ frame_check.error }}</p>
-    {% endif %}
   {% endif %}
 </section>
 {% endblock %}

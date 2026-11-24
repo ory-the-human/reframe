@@ -7,22 +7,22 @@ from .store import read_json, write_json
 
 # Settings editable from the web UI. Values saved there live in
 # /data/settings.json and take precedence over the environment, which only
-# provides defaults.
+# provides defaults. Frames have their own file (frames/registry.py).
 SETTINGS = {
     "source": ("SOURCE", "google_ambient"),
-    "frame": ("FRAME", "cozyla_adb"),
-    "frame_folder": ("FRAME_FOLDER", "/frame"),
     "client_id": ("GOOGLE_CLIENT_ID", ""),
     "client_secret": ("GOOGLE_CLIENT_SECRET", ""),
-    "device_name": ("DEVICE_NAME", "Cozyla frame"),
-    "frame_address": ("FRAME_ADDRESS", "192.168.1.50:5555"),
-    # How photos are shown, for every frame that runs our slideshow. Each screen
-    # can override these in its slideshow URL.
+    "device_name": ("DEVICE_NAME", "cozysync"),
+    # Default display settings for frames that run the cozysync slideshow.
+    # Each frame can override them, and each screen can override them again
+    # in its slideshow URL.
     "display_interval": ("DISPLAY_INTERVAL", "15"),
     "display_layout": ("DISPLAY_LAYOUT", "single"),
     "display_orientation": ("DISPLAY_ORIENTATION", "auto"),
     "display_shuffle": ("DISPLAY_SHUFFLE", "yes"),
 }
+
+DISPLAY_KEYS = ("display_interval", "display_layout", "display_orientation", "display_shuffle")
 
 DISPLAY_CHOICES = {
     "display_layout": {"single": "One photo at a time", "pair": "Two photos side by side when they fit better"},
@@ -37,16 +37,27 @@ DISPLAY_CHOICES = {
 }
 
 
+def display_values(raw: dict[str, str]) -> dict[str, object]:
+    """Validate display_* strings into what the slideshow page uses."""
+    try:
+        interval = max(3, min(3600, int(raw.get("display_interval", ""))))
+    except ValueError:
+        interval = 15
+    values: dict[str, object] = {"interval": interval}
+    for key, choices in DISPLAY_CHOICES.items():
+        value = raw.get(key, "")
+        values[key[len("display_"):]] = value if value in choices else next(iter(choices))
+    values["shuffle"] = values["shuffle"] == "yes"
+    return values
+
+
 @dataclass(frozen=True)
 class Config:
     source: str
-    frame: str
-    frame_folder: str
     client_id: str
     client_secret: str
     data_dir: Path
     device_name: str
-    frame_address: str
     display_interval: str
     display_layout: str
     display_orientation: str
@@ -61,19 +72,13 @@ class Config:
         return self.data_dir / "device.json"
 
     @property
+    def display_raw(self) -> dict[str, str]:
+        return {key: getattr(self, key) for key in DISPLAY_KEYS}
+
+    @property
     def display(self) -> dict[str, object]:
-        """Display settings, validated, as the slideshow page uses them."""
-        try:
-            interval = max(3, min(3600, int(self.display_interval)))
-        except ValueError:
-            interval = 15
-        values = {"interval": interval}
-        for key in ("display_layout", "display_orientation", "display_shuffle"):
-            value = getattr(self, key)
-            choices = DISPLAY_CHOICES[key]
-            values[key[len("display_"):]] = value if value in choices else next(iter(choices))
-        values["shuffle"] = values["shuffle"] == "yes"
-        return values
+        """Default display settings, validated."""
+        return display_values(self.display_raw)
 
     @property
     def has_client(self) -> bool:
