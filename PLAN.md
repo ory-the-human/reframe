@@ -107,6 +107,9 @@ The NAS doesn't keep a copy of the photos. Each one is downloaded to a temp
 file, pushed to the frame, and deleted. The frame holds the only copy. The NAS
 keeps just the state.
 
+The frames list moves from `/data/frames.json` into the same database, so frame
+ids can key the sync state (the web UI keeps managing frames as today).
+
 State lives in `/data/state.sqlite`, one row per (frame, album, media id). Each run
 lists every album shown by at least one frame once, then updates each frame:
 
