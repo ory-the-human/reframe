@@ -159,12 +159,14 @@
     <div class="frame">
       <p><b>{{ f.name }}</b> <span class="muted">· {{ v.kind_label }}{% if f.kind != "web" %} · <code>{{ f.target }}</code>{% endif %}</span></p>
       <p class="muted">Albums: {{ f.albums | map(attribute="name") | join(", ") if f.albums else "all" }}
-        {% if f.kind == "web" %} · {{ v.display.interval }}s per photo, {{ v.display.layout }}, {{ v.display.orientation }}{% if f.display %} (own settings){% endif %}{% endif %}</p>
+        {% if f.shows_slideshow %} · {{ v.display.interval }}s per photo, {{ v.display.layout }}, {{ v.display.orientation }}{% if f.display %} (own settings){% endif %}{% endif %}</p>
       {% if f.kind == "web" %}
         <div class="row" style="margin:8px 0">
           <a class="code" href="{{ v.slideshow_url }}" target="_blank" rel="noopener">{{ v.slideshow_url }}</a>
           <div class="qr small">{{ qr_svg(v.slideshow_url) }}</div>
         </div>
+      {% elif f.is_kiosk %}
+        <p class="muted">Kiosk: plays the cozysync slideshow (settings password on the frame's page)</p>
       {% elif f.kind == "cozyla_adb" %}
         <p class="muted">The first connection shows an "Allow USB debugging?" prompt on the frame. Tick "Always allow", then check again.</p>
       {% endif %}
@@ -185,7 +187,7 @@
   {% if frames | selectattr("frame.kind", "equalto", "web") | list %}
   <p class="muted">A slideshow link is the password for that screen, so share it only with the screen.
     One screen can override its frame's display settings by adding e.g.
-    <code>?interval=10&amp;layout=pair&amp;orientation=portrait&amp;shuffle=no</code> to its link.</p>
+    <code>?interval=10&amp;layout=pair&amp;orientation=portrait&amp;shuffle=no&amp;fill=black</code> to its link.</p>
   {% endif %}
 </section>
 {% endblock %}

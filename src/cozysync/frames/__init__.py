@@ -12,6 +12,9 @@ DEFAULT_MAX_PX = 1920
 
 def build(cfg: Config, frame: FrameConfig) -> Frame:
     """The adapter for a configured frame. Cheap: nothing connects until it's used."""
+    if frame.is_kiosk:
+        # The kiosk plays the slideshow this server hosts.
+        return WebFrame(web_media_dir(cfg.data_dir, frame.id))
     if frame.kind == "cozyla_adb":
         return CozylaAdbFrame(frame.address)
     if frame.kind == "folder":

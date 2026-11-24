@@ -13,19 +13,23 @@ SETTINGS = {
     "client_id": ("GOOGLE_CLIENT_ID", ""),
     "client_secret": ("GOOGLE_CLIENT_SECRET", ""),
     "device_name": ("DEVICE_NAME", "cozysync"),
+    # How frames reach this server, e.g. http://192.168.1.10:1992, for the
+    # slideshow link written into kiosk frames.
+    "public_url": ("PUBLIC_URL", ""),
     # Default display settings for frames that run the cozysync slideshow.
     # Each frame can override them, and each screen can override them again
     # in its slideshow URL.
     "display_interval": ("DISPLAY_INTERVAL", "15"),
-    "display_layout": ("DISPLAY_LAYOUT", "single"),
+    "display_layout": ("DISPLAY_LAYOUT", "pair"),
     "display_orientation": ("DISPLAY_ORIENTATION", "auto"),
     "display_shuffle": ("DISPLAY_SHUFFLE", "yes"),
+    "display_fill": ("DISPLAY_FILL", "blur"),
 }
 
-DISPLAY_KEYS = ("display_interval", "display_layout", "display_orientation", "display_shuffle")
+DISPLAY_KEYS = ("display_interval", "display_layout", "display_orientation", "display_shuffle", "display_fill")
 
 DISPLAY_CHOICES = {
-    "display_layout": {"single": "One photo at a time", "pair": "Two photos side by side when they fit better"},
+    "display_layout": {"pair": "Two photos together when they fit better", "single": "One photo at a time"},
     "display_orientation": {
         "auto": "Follow the screen",
         "landscape": "Landscape",
@@ -34,6 +38,7 @@ DISPLAY_CHOICES = {
         "portrait-flipped": "Portrait, upside down",
     },
     "display_shuffle": {"yes": "Shuffle", "no": "In order"},
+    "display_fill": {"blur": "A blurred copy of the photo", "black": "Black"},
 }
 
 
@@ -58,10 +63,12 @@ class Config:
     client_secret: str
     data_dir: Path
     device_name: str
+    public_url: str
     display_interval: str
     display_layout: str
     display_orientation: str
     display_shuffle: str
+    display_fill: str
 
     @property
     def token_file(self) -> Path:

@@ -9,12 +9,18 @@
   <style>
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
     #stage { position: absolute; left: 50%; top: 50%; overflow: hidden; }
-    .slide { position: absolute; inset: 0; display: flex; gap: 0.5%; opacity: 0;
+    .slide { position: absolute; inset: 0; display: flex; gap: 6px; opacity: 0;
              transition: opacity 1.2s ease; }
+    .slide.pair { background: #fff; }
+    /* Two photos fill their halves (trimming a little), split by a white line. */
+    .slide.pair .cell img { object-fit: cover; }
     .slide.shown { opacity: 1; }
     .slide.column { flex-direction: column; }
-    .slide img, .slide video { flex: 1 1 0; min-width: 0; min-height: 0; width: 100%; height: 100%;
-                               object-fit: contain; }
+    .cell { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
+    .cell img, .cell video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+    /* A tiny copy of the photo, stretched and blurred, fills the space around it. */
+    .cell canvas { position: absolute; inset: -10%; width: 120%; height: 120%; object-fit: cover;
+                   filter: blur(24px) brightness(0.75); }
     #message { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
                color: #888; font: 18px system-ui, sans-serif; text-align: center; padding: 24px; }
   </style>
@@ -36,14 +42,19 @@
   var queue = [];       // names still to show this round
   var timer = null;
   var current = null;   // the slide element on screen
+  var history = [];     // names on each slide shown, for swiping back
+  var pos = -1;         // index in history of the slide on screen
+  var HISTORY_MAX = 50;
+  var seq = 0;          // bumped per slide change, so a slow load can't override a newer one
 
-  // Each screen can override the shared settings: ?interval=10&layout=pair&orientation=portrait&shuffle=no
+  // Each screen can override the shared settings: ?interval=10&layout=pair&orientation=portrait&shuffle=no&fill=black
   function applyOverrides(d) {
     var out = Object.assign({}, d);
     if (params.get("interval")) out.interval = Math.max(3, parseInt(params.get("interval"), 10) || d.interval);
     if (params.get("layout")) out.layout = params.get("layout");
     if (params.get("orientation")) out.orientation = params.get("orientation");
     if (params.get("shuffle")) out.shuffle = params.get("shuffle") !== "no";
+    if (params.get("fill")) out.fill = params.get("fill");
     return out;
   }
 
@@ -115,10 +126,26 @@
   // e.g. a portrait photo on a landscape frame. Two of those share the screen.
   function fitsBadly(img) { return isPortrait(img) !== targetIsPortrait(); }
 
+  function blurredCopy(img) {
+    var canvas = document.createElement("canvas");
+    canvas.width = 24;
+    canvas.height = Math.max(1, Math.round(24 * img.naturalHeight / img.naturalWidth));
+    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
+
+  function cell(el, alone) {
+    var div = document.createElement("div");
+    div.className = "cell";
+    if (alone && el.tagName === "IMG" && display.fill !== "black") div.appendChild(blurredCopy(el));
+    div.appendChild(el);
+    return div;
+  }
+
   function show(elements, stacked) {
     var slide = document.createElement("div");
-    slide.className = "slide" + (stacked ? " column" : "");
-    elements.forEach(function (el) { slide.appendChild(el); });
+    slide.className = "slide" + (stacked ? " column" : "") + (elements.length > 1 ? " pair" : "");
+    elements.forEach(function (el) { slide.appendChild(cell(el, elements.length === 1)); });
     stage.appendChild(slide);
     message.style.display = "none";
     // Force a layout so the fade-in transition runs.
@@ -146,7 +173,35 @@
     schedule(MAX_VIDEO_MS);
   }
 
+  function showImages(imgs) {
+    // Two photos: side by side on a landscape screen, stacked on a portrait one.
+    show(imgs, imgs.length > 1 && targetIsPortrait());
+    schedule(display.interval * 1000);
+  }
+
+  function record(names) {
+    history.push(names);
+    if (history.length > HISTORY_MAX) history.shift();
+    pos = history.length - 1;
+  }
+
+  // Show a slide from history again (after swiping back, or forward again).
+  function go(index) {
+    var my = ++seq;
+    var list = history[index].map(byName).filter(Boolean);
+    if (!list.length) { history.splice(index, 1); pos = Math.min(pos, history.length - 1); advance(); return; }
+    pos = index;
+    if (list[0].type === "video") { showVideo(list[0]); return; }
+    Promise.all(list.map(loadImage)).then(function (imgs) {
+      if (my !== seq) return;
+      imgs = imgs.filter(Boolean);
+      if (imgs.length) showImages(imgs); else schedule(0);
+    });
+  }
+
   function advance() {
+    if (pos < history.length - 1) { go(pos + 1); return; }
+    var my = ++seq;
     if (!items.length) {
       message.textContent = "No photos yet. They appear here once cozysync has synced some.";
       message.style.display = "flex";
@@ -155,23 +210,29 @@
       return;
     }
     var item = nextItem();
-    if (item.type === "video") { showVideo(item); return; }
+    if (item.type === "video") { record([item.name]); showVideo(item); return; }
     loadImage(item).then(function (img) {
+      if (my !== seq) return;
       if (!img) { schedule(0); return; }
       var candidate = display.layout === "pair" && fitsBadly(img) ? peekItem() : null;
       var second = candidate && candidate.type === "image" && candidate.name !== item.name
         ? loadImage(candidate) : Promise.resolve(null);
       return second.then(function (img2) {
+        if (my !== seq) return;
         if (img2 && fitsBadly(img2)) {
           queue.shift();
-          // Side by side on a landscape screen, stacked on a portrait one.
-          show([img, img2], targetIsPortrait());
+          record([item.name, candidate.name]);
+          showImages([img, img2]);
         } else {
-          show([img], false);
+          record([item.name]);
+          showImages([img]);
         }
-        schedule(display.interval * 1000);
       });
     });
+  }
+
+  function back() {
+    if (pos > 0) go(pos - 1);
   }
 
   function refresh(first) {
@@ -192,6 +253,23 @@
 
   window.addEventListener("resize", layoutStage);
   window.addEventListener("orientationchange", layoutStage);
+  // Swipe (or arrow keys) for the next or previous photo.
+  var touchX = null, touchY = null;
+  document.addEventListener("touchstart", function (e) {
+    touchX = e.changedTouches[0].clientX;
+    touchY = e.changedTouches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchend", function (e) {
+    if (touchX === null) return;
+    var dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY;
+    touchX = null;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) advance(); else back();
+  }, { passive: true });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowRight") advance();
+    if (e.key === "ArrowLeft") back();
+  });
   document.addEventListener("click", function () {
     var el = document.documentElement;
     if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(function () {});

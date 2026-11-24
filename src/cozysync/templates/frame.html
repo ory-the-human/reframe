@@ -44,13 +44,13 @@
       <p class="muted">The source has no albums yet. This frame will show every album.</p>
     {% endif %}
 
-    {% if frame.kind == "web" %}
+    {% if frame.shows_slideshow %}
     <h2 style="margin-top:24px">Display</h2>
     <p class="muted">Leave a setting on "Default" to use the one in <a href="{{ url_for('settings') }}">settings</a>.</p>
     <label for="display_interval">Seconds per photo</label>
     <input type="number" id="display_interval" name="display_interval" value="{{ frame.display.get('display_interval', '') }}"
            min="3" max="3600" placeholder="Default ({{ cfg.display.interval }})">
-    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order")] %}
+    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order"), ("display_fill", "Space around photos")] %}
     <label for="{{ key }}">{{ label }}</label>
     <select id="{{ key }}" name="{{ key }}">
       <option value="">Default ({{ display_choices[key][cfg[key]] }})</option>
@@ -62,6 +62,65 @@
     <p style="margin-top:18px"><button type="submit">{{ "Add frame" if is_new else "Save" }}</button>
       <a class="button secondary" href="{{ url_for('index') }}#frames">Cancel</a></p>
   </form>
+
+  {% if not is_new and frame.kind == "cozyla_adb" %}
+  <h2 style="margin-top:28px">Kiosk</h2>
+  {% if kiosk_job %}
+    <div id="kiosk-job" data-status="{{ url_for('frame_kiosk_status', frame_id=frame.id) }}">
+      <p><b>{{ "Setting up the kiosk" if kiosk_job.action == "setup" else "Restoring the Cozyla app" }}…</b>
+        This takes about a minute; keep the frame on.</p>
+      <progress id="kiosk-progress" max="100" value="{{ kiosk_job.pct }}" style="width:100%"></progress>
+      <p class="muted" id="kiosk-step">{{ kiosk_job.step }}</p>
+      <noscript><p><a href="">Reload</a> to see progress.</p></noscript>
+    </div>
+    <script>
+      (function () {
+        var box = document.getElementById("kiosk-job");
+        function poll() {
+          fetch(box.dataset.status, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (job) {
+            if (!job.action || job.done) { location.reload(); return; }
+            document.getElementById("kiosk-progress").value = job.pct;
+            document.getElementById("kiosk-step").textContent = job.step;
+            setTimeout(poll, 1000);
+          }).catch(function () { setTimeout(poll, 3000); });
+        }
+        setTimeout(poll, 1000);
+      })();
+    </script>
+  {% elif frame.is_kiosk %}
+    <p>This frame runs the cozysync slideshow in {{ frame.kiosk.app }}, which is its home screen.
+      The Cozyla app is turned off. cozysync manages it over adb.</p>
+    <table>
+      <tr><th>Slideshow</th><td><code>{{ frame.kiosk.start_url }}</code></td></tr>
+      <tr><th>Settings password</th><td><details><summary>Show</summary><code>{{ frame.kiosk.password }}</code></details></td></tr>
+      <tr><th>Kiosk app</th><td>{{ frame.kiosk.app }} {{ frame.kiosk.app_version }}</td></tr>
+    </table>
+    <p class="muted">To change the kiosk's own settings on the frame, tap the top-left quarter of the
+      screen 10 times quickly, then enter the password.</p>
+    <div class="actions" style="margin-top:12px">
+      <form class="inline" method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}">
+        <button class="secondary">Update kiosk settings</button></form>
+      <form class="inline" method="post" action="{{ url_for('frame_kiosk_deprovision', frame_id=frame.id) }}"
+            onsubmit='return confirm({{ ("Restore " ~ frame.name ~ " to the Cozyla app? The kiosk app is removed and the frame goes back to how it was before.") | tojson }})'>
+        <button class="danger">Restore the Cozyla app</button></form>
+    </div>
+  {% elif frame.kiosk %}
+    <p class="warn">A kiosk setup didn't finish. Run it again, or restore the frame to how it was.</p>
+    <div class="actions">
+      <form class="inline" method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}"><button>Set up the kiosk again</button></form>
+      <form class="inline" method="post" action="{{ url_for('frame_kiosk_deprovision', frame_id=frame.id) }}"><button class="danger">Restore the Cozyla app</button></form>
+    </div>
+  {% else %}
+    <p>Replace the Cozyla app with the cozysync slideshow: cozysync installs Webview Kiosk (open source,
+      from F-Droid), makes it the frame's home screen with its settings locked by a password, and turns off the Cozyla app
+      (its photos, Talking Photo and phone uploads stop). It records how the frame was, so
+      "Restore the Cozyla app" puts it back.</p>
+    <form method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}"
+          onsubmit='return confirm({{ ("Set up " ~ frame.name ~ " as a cozysync kiosk? It takes about a minute.") | tojson }})'>
+      <button>Set up as a cozysync kiosk</button>
+    </form>
+  {% endif %}
+  {% endif %}
 
   {% if not is_new %}
   {% set warning = "Remove " ~ frame.name ~ "?" ~ (" Its slideshow link stops working and its copies of the photos are deleted." if frame.kind == "web" else "") %}

@@ -73,17 +73,36 @@ full screen, fades between photos, picks up new photos and setting changes withi
 a minute, and plays videos muted.
 
 - **Display settings**: seconds per photo, one photo or two, orientation,
-  shuffle. Defaults are in Settings → Display; each frame can override them on
+  shuffle, and what fills the space around a photo (a blurred copy, or black). Defaults are in Settings → Display; each frame can override them on
   its page, and each screen again in its link.
 - **Two photos:** when a photo's orientation doesn't match the screen (portrait
   photos on a landscape screen), two of them share it, side by side or stacked.
 - **Orientation:** "Follow the screen" uses what the browser reports. If a screen
   is mounted sideways and its browser doesn't rotate, pick the orientation and the
   slideshow rotates itself.
+- **Swipe** left or right (or press the arrow keys) for the next or previous photo.
 - **Per-screen overrides:** add them to the frame's link, e.g.
-  `?interval=10&layout=pair&orientation=portrait&shuffle=no`.
+  `?interval=10&layout=pair&orientation=portrait&shuffle=no&fill=black`.
 - The link contains a secret instead of the UI password, because kiosk browsers
   can't answer a password prompt. Only give it to your screens.
+
+### Cozyla frames as kiosks
+
+On a Cozyla frame's page, **Set up as a cozysync kiosk** replaces the Cozyla app
+with the cozysync slideshow, in about a minute:
+
+1. Installs [Webview Kiosk](https://f-droid.org/en/packages/uk.nktnet.webviewkiosk/)
+   (open source, from F-Droid, checked against a pinned checksum).
+2. Points it at the frame's slideshow link, hides its toolbars, and locks its
+   settings with a generated password (shown on the frame's page). On the frame,
+   tap the top-left quarter of the screen 10 times to open its settings.
+3. Turns off the Cozyla app, so the kiosk is the home screen, also after a reboot.
+
+cozysync records how the frame was first. **Restore the Cozyla app** puts it back
+exactly: the Cozyla app on and the kiosk app removed. The Cozyla app keeps its
+photos while it's off. A frame set up as a kiosk can't be removed from cozysync
+until it's restored. The link uses Settings → "Address frames use to reach this
+server" (`PUBLIC_URL`), or the address you opened the web UI with.
 
 `cozysync frame-put FRAME photo.jpg …` copies files to a frame by hand,
 which is handy for trying the slideshow before the sync engine exists.
@@ -101,8 +120,18 @@ docker compose run --rm cozysync diff          # compare the last two snapshots
 docker compose run --rm cozysync frames                          # list frames
 docker compose run --rm cozysync frames add "Kitchen" --type web
 docker compose run --rm cozysync frames add "Living room" --type cozyla_adb --address 192.168.1.50:5555
+docker compose run --rm cozysync frames show Kitchen             # details and slideshow link
+docker compose run --rm cozysync frames edit Kitchen --interval 10 --fill black --album ID
+docker compose run --rm cozysync frames edit Kitchen --interval ""   # back to the default
+docker compose run --rm cozysync settings                        # list settings
+docker compose run --rm cozysync settings set public_url http://192.168.1.10:1992
+docker compose run --rm cozysync settings unset display_layout   # back to .env or the default
+docker compose run --rm cozysync signout [--forget-device]       # google_ambient
 docker compose run --rm cozysync frame-check                     # all frames, or name one
 docker compose run --rm cozysync frame-put Kitchen /data/samples/*.jpg
+docker compose run --rm cozysync kiosk setup "Living room" --url http://192.168.1.10:1992
+docker compose run --rm cozysync kiosk show "Living room"       # settings password
+docker compose run --rm cozysync kiosk restore "Living room"    # back to the Cozyla app
 ```
 
 Running locally without Docker (Python 3.9+):

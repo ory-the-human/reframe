@@ -20,7 +20,7 @@ from flask import Flask, Response, abort, flash, redirect, render_template, requ
 from markupsafe import Markup
 
 from . import config, frames, snapshots, sources
-from .frames import registry
+from .frames import kiosk, registry
 from .frames import web as web_frame
 from .sources.google_ambient.api import AmbientClient
 from .sources.google_ambient.auth import TokenStore
@@ -120,7 +120,7 @@ def index():
 def settings():
     cfg = config.load()
     if request.method == "POST":
-        fields = ("source", "client_id", "device_name", *config.DISPLAY_KEYS)
+        fields = ("source", "client_id", "device_name", "public_url", *config.DISPLAY_KEYS)
         updates = {k: request.form.get(k, "").strip() for k in fields}
         # The secret is write-only: blank means keep the current one.
         if request.form.get("client_secret", "").strip():
@@ -215,7 +215,7 @@ def _frame_view(cfg: config.Config, frame: registry.FrameConfig) -> dict[str, An
         "frame": frame,
         "kind_label": registry.KINDS.get(frame.kind, frame.kind),
         "display": frames.display_for(cfg, frame),
-        "slideshow_url": url_for("slideshow", key=frame.key, _external=True) if frame.kind == "web" else None,
+        "slideshow_url": url_for("slideshow", key=frame.key, _external=True) if frame.shows_slideshow else None,
         "check": _frame_checks.get(frame.id),
     }
 
@@ -244,10 +244,16 @@ def _frame_from_form(frame: registry.FrameConfig) -> registry.FrameConfig:
 
 def _frame_form(cfg: config.Config, frame: registry.FrameConfig, is_new: bool):
     albums, albums_error = _album_choices(cfg, None if is_new else frame)
+    job = _kiosk_jobs.get(frame.id)
+    if job and job.get("done"):
+        _kiosk_jobs.pop(frame.id, None)
+        flash(job.get("error") or job.get("result", ""), "error" if job.get("error") else "ok")
+        job = None
     return render_template(
         "frame.html",
         cfg=cfg,
         frame=frame,
+        kiosk_job=job,
         is_new=is_new,
         kinds=registry.KINDS,
         albums=albums,
@@ -296,7 +302,11 @@ def frame_edit(frame_id: str):
 @app.post("/frames/<frame_id>/delete")
 def frame_delete(frame_id: str):
     cfg = config.load()
-    registry.remove(cfg, frame_id)
+    try:
+        registry.remove(cfg, frame_id)
+    except frames.FrameError as e:
+        flash(str(e), "error")
+        return redirect(url_for("frame_edit", frame_id=frame_id))
     _frame_checks.pop(frame_id, None)
     flash("Frame removed.", "ok")
     return redirect(url_for("index") + "#frames")
@@ -311,6 +321,95 @@ def frame_check(frame_id: str):
     except Exception as e:
         _frame_checks[frame_id] = {"ok": False, "error": str(e)}
     return redirect(url_for("index") + "#frames")
+
+
+def _public_base(cfg: config.Config) -> str:
+    """The server's address as frames see it, for links written onto them."""
+    if cfg.public_url:
+        return cfg.public_url.rstrip("/")
+    host = urlparse(request.host_url).hostname or ""
+    if host in ("localhost", "127.0.0.1", "::1"):
+        raise frames.FrameError(
+            "this page was opened as localhost, which a frame can't reach: set "
+            "\"Address frames use to reach this server\" in Settings, or open this page by its network address"
+        )
+    return request.host_url.rstrip("/")
+
+
+# Kiosk setups and restores in progress or just finished, by frame id. They take
+# about a minute, so they run in the background and the frame's page polls them.
+_kiosk_jobs: dict[str, dict[str, Any]] = {}
+_kiosk_lock = threading.Lock()
+
+
+def _run_kiosk_job(cfg: config.Config, frame: registry.FrameConfig, deprovisioning: bool, url: str) -> None:
+    job = _kiosk_jobs[frame.id]
+
+    def progress(step: str, pct: int) -> None:
+        job.update(step=step, pct=pct)
+
+    def save(state: dict[str, Any]) -> None:
+        frame.kiosk = state
+        registry.update(cfg, frame)
+
+    try:
+        if deprovisioning:
+            kiosk.deprovision(cfg, frame.id, frame.address, frame.kiosk, progress)
+            save({})
+            job["result"] = f"{frame.name} is back to the Cozyla app."
+        else:
+            save(kiosk.provision(cfg, frame.id, frame.address, url, frame.kiosk, save, progress))
+            job["result"] = f"{frame.name} is now a cozysync kiosk."
+    except Exception as e:
+        job["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        job.update(pct=100, done=True)
+
+
+def _kiosk_action(frame_id: str, deprovisioning: bool):
+    cfg = config.load()
+    try:
+        frame = registry.find(frames.load_all(cfg), frame_id)
+    except frames.FrameError:
+        abort(404)
+    if frame.kind != "cozyla_adb":
+        abort(400)
+    url = ""
+    if not deprovisioning:
+        if not frame.key:
+            frame.key = secrets.token_urlsafe(18)
+            registry.update(cfg, frame)
+        try:
+            url = _public_base(cfg) + url_for("slideshow", key=frame.key)
+        except frames.FrameError as e:
+            flash(str(e), "error")
+            return redirect(url_for("frame_edit", frame_id=frame.id))
+    with _kiosk_lock:
+        running = _kiosk_jobs.get(frame.id)
+        if not (running and not running.get("done")):
+            _kiosk_jobs[frame.id] = {
+                "action": "restore" if deprovisioning else "setup",
+                "step": "Starting",
+                "pct": 0,
+                "done": False,
+            }
+            threading.Thread(target=_run_kiosk_job, args=(cfg, frame, deprovisioning, url), daemon=True).start()
+    return redirect(url_for("frame_edit", frame_id=frame.id))
+
+
+@app.get("/frames/<frame_id>/kiosk/status")
+def frame_kiosk_status(frame_id: str):
+    return _kiosk_jobs.get(frame_id) or {}
+
+
+@app.post("/frames/<frame_id>/kiosk/provision")
+def frame_kiosk_provision(frame_id: str):
+    return _kiosk_action(frame_id, deprovisioning=False)
+
+
+@app.post("/frames/<frame_id>/kiosk/deprovision")
+def frame_kiosk_deprovision(frame_id: str):
+    return _kiosk_action(frame_id, deprovisioning=True)
 
 
 def _web_frame(key: str) -> tuple[config.Config, registry.FrameConfig]:

@@ -1,6 +1,9 @@
 import argparse
 import collections
 import json
+import os
+import secrets
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -8,8 +11,8 @@ from typing import Optional
 
 import qrcode
 
-from . import config, frames, snapshots
-from .frames import registry
+from . import config, frames, snapshots, sources
+from .frames import kiosk, registry
 from .sources import get_source
 from .sources.google_ambient.api import AmbientClient
 from .sources.google_ambient.auth import TokenStore
@@ -144,12 +147,90 @@ def cmd_frames(cfg: config.Config, args: argparse.Namespace) -> None:
         registry.remove(cfg, frame.id)
         print(f"Removed {frame.name} ({frame.id}).")
         return
+    if args.action == "edit":
+        _edit_frame(cfg, registry.find(frames.load_all(cfg), args.name), args)
+        return
+    if args.action == "show":
+        _show_frame(cfg, registry.find(frames.load_all(cfg), args.name))
+        return
     all_frames = frames.load_all(cfg)
     if not all_frames:
         print("No frames yet; add one with `cozysync frames add NAME --type ...`.")
     for f in all_frames:
         albums = ", ".join(a["name"] for a in f.albums) or "all albums"
-        print(f"{f.id}  {f.name:<20} {f.kind:<11} {f.target:<28} {albums}")
+        kind = f"{f.kind} (kiosk)" if f.is_kiosk else f.kind
+        print(f"{f.id}  {f.name:<20} {kind:<19} {f.target:<28} {albums}")
+
+
+DISPLAY_FLAGS = {  # CLI flag -> display setting
+    "interval": "display_interval",
+    "layout": "display_layout",
+    "orientation": "display_orientation",
+    "shuffle": "display_shuffle",
+    "fill": "display_fill",
+}
+
+
+def _check_display(key: str, value: str) -> None:
+    """Reject display values the slideshow wouldn't understand ("" means the default)."""
+    if not value:
+        return
+    if key == "display_interval":
+        if not value.isdigit() or not 3 <= int(value) <= 3600:
+            sys.exit("interval: give seconds per photo, 3 to 3600.")
+    elif value not in config.DISPLAY_CHOICES[key]:
+        sys.exit(f"{key[len('display_'):]}: choose one of {', '.join(config.DISPLAY_CHOICES[key])}.")
+
+
+def _edit_frame(cfg: config.Config, f: registry.FrameConfig, args: argparse.Namespace) -> None:
+    for field in ("address", "folder"):
+        if getattr(args, field) is not None:
+            setattr(f, field, getattr(args, field))
+    if args.rename:
+        f.name = args.rename
+    if args.all_albums:
+        f.albums = []
+    elif args.album:
+        known = {a["id"]: a["name"] for a in f.albums}
+        f.albums = [{"id": a, "name": known.get(a, a)} for a in args.album]
+    for flag, key in DISPLAY_FLAGS.items():
+        value = getattr(args, flag)
+        if value is None:
+            continue
+        _check_display(key, value)
+        if value:
+            f.display[key] = value
+        else:
+            f.display.pop(key, None)
+    registry.update(cfg, f)
+    print(f"Saved {f.name}.")
+    _show_frame(cfg, f)
+
+
+def _slideshow_link(cfg: config.Config, f: registry.FrameConfig) -> str:
+    if cfg.public_url:
+        return f"{cfg.public_url.rstrip('/')}/show/{f.key}"
+    return f"/show/{f.key} on this server (set public_url for the full link)"
+
+
+def _show_frame(cfg: config.Config, f: registry.FrameConfig) -> None:
+    print(f"{'id':>12}: {f.id}")
+    print(f"{'name':>12}: {f.name}")
+    print(f"{'type':>12}: {registry.KINDS.get(f.kind, f.kind)}")
+    print(f"{'target':>12}: {f.target}")
+    print(f"{'albums':>12}: {', '.join(a['name'] for a in f.albums) or 'all'}")
+    if f.shows_slideshow:
+        effective = frames.display_for(cfg, f)
+        for flag, key in DISPLAY_FLAGS.items():
+            own = " (this frame)" if f.display.get(key) else ""
+            value = effective[flag]
+            print(f"{flag:>12}: {('yes' if value else 'no') if isinstance(value, bool) else value}{own}")
+        print(f"{'slideshow':>12}: {_slideshow_link(cfg, f)}")
+    if f.is_kiosk:
+        print(f"{'kiosk':>12}: {f.kiosk.get('app')} {f.kiosk.get('app_version')}, plays {f.kiosk.get('start_url')}")
+        print(f"{'':>12}  password: `cozysync kiosk show {shlex.quote(f.name)}`")
+    elif f.kiosk:
+        print(f"{'kiosk':>12}: setup didn't finish; run `cozysync kiosk setup` or `restore`")
 
 
 def _selected(cfg: config.Config, ref: Optional[str]) -> list[registry.FrameConfig]:
@@ -174,6 +255,77 @@ def cmd_frame_put(cfg: config.Config, args: argparse.Namespace) -> None:
     for name in args.files:
         path = Path(name)
         print(f"{path.name} -> {adapter.put(path, path.name)}")
+
+
+def _print_progress(step: str, pct: int) -> None:
+    print(f"  [{pct:3d}%] {step}")
+
+
+def cmd_kiosk(cfg: config.Config, args: argparse.Namespace) -> None:
+    f = registry.find(frames.load_all(cfg), args.frame)
+    if f.kind != "cozyla_adb":
+        sys.exit(f"{f.name} isn't a Cozyla frame over adb.")
+
+    def save(state: dict) -> None:
+        f.kiosk = state
+        registry.update(cfg, f)
+
+    if args.action == "setup":
+        base = (args.url or cfg.public_url).rstrip("/")
+        if not base:
+            sys.exit("Give the server's address as frames see it: --url http://192.168.1.10:1992 (or set PUBLIC_URL).")
+        if not f.key:
+            f.key = secrets.token_urlsafe(18)
+        print(f"Setting up {f.name} as a kiosk (about a minute)...")
+        save(kiosk.provision(cfg, f.id, f.address, f"{base}/show/{f.key}", f.kiosk, save, _print_progress))
+        print(f"Done. The frame plays {f.kiosk['start_url']}")
+    elif args.action == "restore":
+        print(f"Restoring {f.name} to how it was...")
+        kiosk.deprovision(cfg, f.id, f.address, f.kiosk, _print_progress)
+        save({})
+        print("Done.")
+    if args.action in ("setup", "show"):
+        if f.kiosk:
+            print(f"Kiosk settings password: {f.kiosk.get('password')}")
+            print("(On the frame: tap the top-left quarter of the screen 10 times quickly.)")
+        else:
+            print(f"{f.name} isn't set up as a kiosk.")
+
+
+SECRET_SETTINGS = {"client_secret"}
+
+
+def cmd_settings(cfg: config.Config, args: argparse.Namespace) -> None:
+    saved = read_json(config.settings_file()) or {}
+    if args.action in ("set", "unset"):
+        key = args.key
+        if key not in config.SETTINGS:
+            sys.exit(f"Unknown setting {key!r}; settings: {', '.join(config.SETTINGS)}.")
+        value = args.value if args.action == "set" else ""
+        if key in config.DISPLAY_KEYS:
+            _check_display(key, value)
+        elif key == "source" and value and value not in sources.KINDS:
+            sys.exit(f"source: choose one of {', '.join(sources.KINDS)}.")
+        config.save_settings({key: value})
+        print(f"{'Set' if value else 'Cleared'} {key}.")
+        return
+    for key, (env, default) in config.SETTINGS.items():
+        value = getattr(cfg, key)
+        origin = "saved" if saved.get(key) else ("env " + env if os.environ.get(env) else "default")
+        if key in SECRET_SETTINGS and value:
+            value = "(set)"
+        print(f"{key:<20} {value or '-':<40} {origin}")
+
+
+def cmd_signout(cfg: config.Config, args: argparse.Namespace) -> None:
+    if args.forget_device:
+        saved = read_json(cfg.device_file)
+        if saved:
+            AmbientClient(TokenStore(cfg)).delete_device(saved["id"])
+            cfg.device_file.unlink()
+            print("Removed the device from Google Photos.")
+    cfg.token_file.unlink(missing_ok=True)
+    print("Signed out.")
 
 
 def cmd_web(cfg: config.Config, args: argparse.Namespace) -> None:
@@ -209,7 +361,7 @@ def main() -> None:
     p.add_argument("new", nargs="?", help="newer snapshot file")
     p.set_defaults(func=cmd_diff)
 
-    p = sub.add_parser("frames", help="list, add or remove frames")
+    p = sub.add_parser("frames", help="list, add, show, edit or remove frames")
     fsub = p.add_subparsers(dest="action")
     fp = fsub.add_parser("add", help="add a frame")
     fp.add_argument("name")
@@ -219,7 +371,40 @@ def main() -> None:
     fp.add_argument("--album", action="append", metavar="ID", help="album id to show (repeat); default all")
     fp = fsub.add_parser("remove", help="remove a frame")
     fp.add_argument("name", help="frame name or id")
+    fp = fsub.add_parser("show", help="a frame's details, slideshow link and kiosk state")
+    fp.add_argument("name", help="frame name or id")
+    fp = fsub.add_parser("edit", help="change a frame; display flags take \"\" to go back to the default")
+    fp.add_argument("name", help="frame name or id")
+    fp.add_argument("--rename", metavar="NAME", help="new name")
+    fp.add_argument("--address", help="cozyla_adb: host:port")
+    fp.add_argument("--folder", help="folder: path inside the container")
+    albums = fp.add_mutually_exclusive_group()
+    albums.add_argument("--album", action="append", metavar="ID", help="album id to show (repeat); replaces the list")
+    albums.add_argument("--all-albums", action="store_true", help="show every album")
+    fp.add_argument("--interval", metavar="SECONDS", help="seconds per photo")
+    for flag, key in DISPLAY_FLAGS.items():
+        if flag != "interval":
+            fp.add_argument(f"--{flag}", metavar="|".join(config.DISPLAY_CHOICES[key]))
     p.set_defaults(func=cmd_frames)
+
+    p = sub.add_parser("settings", help="list settings, or set or clear one (same as the web UI's Settings)")
+    ssub = p.add_subparsers(dest="action")
+    sp = ssub.add_parser("set", help="save a setting")
+    sp.add_argument("key")
+    sp.add_argument("value")
+    sp = ssub.add_parser("unset", help="clear a saved setting (back to .env or the default)")
+    sp.add_argument("key")
+    p.set_defaults(func=cmd_settings)
+
+    p = sub.add_parser("signout", help="google_ambient: forget the sign-in")
+    p.add_argument("--forget-device", action="store_true", help="also remove the device from Google Photos")
+    p.set_defaults(func=cmd_signout)
+
+    p = sub.add_parser("kiosk", help="set up a Cozyla frame as a cozysync kiosk, or restore it")
+    p.add_argument("action", choices=["setup", "restore", "show"])
+    p.add_argument("frame", help="frame name or id")
+    p.add_argument("--url", help="setup: this server's address as frames see it, e.g. http://192.168.1.10:1992")
+    p.set_defaults(func=cmd_kiosk)
 
     p = sub.add_parser("frame-check", help="connect to frames and print their details")
     p.add_argument("frame", nargs="?", help="frame name or id; default all")

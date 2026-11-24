@@ -8,13 +8,19 @@
       {% for kind, label in source_kinds.items() %}<option value="{{ kind }}" {{ "selected" if kind == cfg.source }}>{{ label }}</option>{% endfor %}
     </select>
 
+    <h2 style="margin-top:24px">This server</h2>
+    <label for="public_url">Address frames use to reach this server</label>
+    <input type="url" id="public_url" name="public_url" value="{{ cfg.public_url }}" placeholder="http://192.168.1.10:1992">
+    <p class="muted">Written into kiosk frames as their slideshow link. Leave blank to use the address
+      you opened this page with (unless that's <code>localhost</code>).</p>
+
     <h2 style="margin-top:24px">Display</h2>
-    <p class="muted">Defaults for frames that run the cozysync slideshow (browser slideshow frames).
+    <p class="muted">Defaults for frames that run the cozysync slideshow (browser slideshow and kiosk frames).
       Each frame can override them on its own page.</p>
     <label for="display_interval">Seconds per photo</label>
     <input type="number" id="display_interval" name="display_interval" value="{{ cfg.display.interval }}" min="3" max="3600">
 
-    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order")] %}
+    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order"), ("display_fill", "Space around photos")] %}
     <label for="{{ key }}">{{ label }}</label>
     <select id="{{ key }}" name="{{ key }}">
       {% for value, text in display_choices[key].items() %}<option value="{{ value }}" {{ "selected" if value == cfg[key] }}>{{ text }}</option>{% endfor %}

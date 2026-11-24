@@ -120,3 +120,47 @@ running a worker per frame would mean one sign-in and one container per screen.
   create frames on first start (`FRAME_ADDRESS` may list several, comma-separated);
   existing slideshow links keep working.
 
+## 6. Home Assistant is an add-on, never a requirement (2026-11-24)
+
+**Decision.** A frame works with cozysync alone. cozysync runs and controls it:
+photos, the slideshow, display settings, and screen on/off and brightness where
+the frame allows it. Home Assistant, when present, is an extra way in: cozysync as
+an HA add-on, its status and controls as HA entities, optionally HA automations
+driving the screen or an HA dashboard as a second page on the frame.
+
+**Why.** Most people with a photo frame don't run Home Assistant, and a frame that
+goes blank when HA is down or missing isn't a photo frame.
+
+**Consequences.**
+
+- Nothing on the frame may depend on HA being installed or reachable. Features
+  that HA offers (schedules, brightness) need a cozysync path too.
+- The HA items in [roadmap.md](roadmap.md#home-assistant) are packaging and
+  integration, not prerequisites.
+
+
+## 7. Cozyla frames run the slideshow in an open-source kiosk app (2026-11-24)
+
+**Decision.** cozysync provisions a Cozyla frame as a kiosk: it installs
+[Webview Kiosk](https://f-droid.org/en/packages/uk.nktnet.webviewkiosk/)
+(AGPL-3.0, F-Droid, pinned version and checksum), writes its settings over adb
+(slideshow link, no toolbars, settings locked by a generated password), and turns
+off the Cozyla app so the kiosk is the home screen. It records the frame's original
+state first, and restoring puts it back exactly.
+
+**Why.** Inside the Cozyla app our photos only stay while the frame is offline
+(its syncs remove anything Cozyla's cloud doesn't know; see
+[cozyla-frame.md](cozyla-frame.md)). Fully Kiosk Browser worked, but its remote
+admin, PIN lock and light-sensor sleep are paid features that put a watermark on
+the screen without a licence, and it asks for camera, microphone and location
+access. FreeKiosk needs Android 8 and these frames run Android 6; WallPanel is
+archived. Webview Kiosk runs on Android 5+, is maintained, and has MQTT for later.
+
+**Consequences.**
+
+- cozysync, not the kiosk app, manages the frame (over root adb), so schedules,
+  light-sensor sleep and updates are cozysync features.
+- The Cozyla app's features (Talking Photo, phone uploads, its sleep schedule)
+  stop on a kiosk frame until it's restored.
+- Android saves an app being turned on or off about 10 seconds later; provisioning
+  waits for that, or a reboot would bring the Cozyla app back.

@@ -43,11 +43,22 @@ class CozylaAdbFrame:
         self.directory = directory
         self._connected = False
 
-    def _adb(self, *args: str, timeout: int = 60) -> str:
+    def run(self, *args: str, timeout: int = 60) -> str:
         if not self._connected:
             connect(self.address)
             self._connected = True
         return adb(self.address, *args, timeout=timeout)
+
+    def shell(self, command: str, timeout: int = 60) -> str:
+        """Run a shell command and raise if it fails.
+
+        Old adbd (Android 6) doesn't report exit codes, so the command echoes its own.
+        """
+        out = self.run("shell", f"{command}; echo __rc=$?", timeout=timeout).replace("\r", "")
+        body, _, rc = out.rstrip("\n").rpartition("__rc=")
+        if rc.strip() != "0":
+            raise FrameError(f"`{command}` failed on {self.address}: {body.strip() or 'exit ' + rc.strip()}")
+        return body
 
     def check(self) -> dict[str, str]:
         props = {
@@ -55,19 +66,19 @@ class CozylaAdbFrame:
             "android": "ro.build.version.release",
             "build": "ro.build.display.id",
         }
-        info = {k: self._adb("shell", "getprop", p).strip() for k, p in props.items()}
-        info["whoami"] = self._adb("shell", "id", "-un").strip()
-        info["screen"] = self._adb("shell", "wm", "size").strip()
+        info = {k: self.run("shell", "getprop", p).strip() for k, p in props.items()}
+        info["whoami"] = self.run("shell", "id", "-un").strip()
+        info["screen"] = self.run("shell", "wm", "size").strip()
         info["directory"] = self.directory
         return info
 
     def put(self, local: Path, name: str) -> str:
         remote = posixpath.join(self.directory, name)
-        self._adb("shell", "mkdir", "-p", self.directory)
-        self._adb("push", str(local), remote, timeout=300)
+        self.run("shell", "mkdir", "-p", self.directory)
+        self.run("push", str(local), remote, timeout=300)
         return remote
 
     def remove(self, frame_path: str) -> None:
         if not frame_path.startswith(self.directory + "/"):
             raise FrameError(f"refusing to delete {frame_path}: outside {self.directory}")
-        self._adb("shell", "rm", "-f", frame_path)
+        self.run("shell", "rm", "-f", frame_path)

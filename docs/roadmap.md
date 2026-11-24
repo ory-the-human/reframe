@@ -13,7 +13,12 @@ scheduled), **idea** (worth recording, undecided).
 |---|---|---|
 | Second source: Google Photos share link or Immich | now | Pick one. Share link: keeps photos in Google Photos, but the link is a secret and the page can change. Immich: private and stable, but photos must be in Immich. |
 | Sync engine (pass-through, safe removal) | now | PLAN.md phase 2. Uses only the `Source` and `Frame` interfaces. |
-| Show synced photos in the Cozyla app | next | PLAN.md phase 3, option A (ItemEntry rows) or B (screensaver). |
+| Show synced photos in the Cozyla app | idea | Works only with the frame kept offline ([cozyla-frame.md](cozyla-frame.md)); the kiosk below replaced it. |
+| Cozyla frames as kiosks | done | One-click setup and exact restore from the frame's page ([decisions.md](decisions.md), entry 7). |
+| Store kiosk photos on the frame | next | Push the slideshow page and files to the frame, so it keeps playing with the server off. |
+| Screen schedule and light-sensor sleep for kiosks | next | cozysync drives them over adb; the kiosk app has no light sensor support. |
+| Video conversion in the sync engine | next | H.264 8-bit, sides a multiple of 32, sized per frame ([cozyla-frame.md](cozyla-frame.md#video-on-the-frame-tested-2026-11-24)). |
+| Kiosk over MQTT | idea | Webview Kiosk speaks MQTT (with Home Assistant discovery); connect it when a broker is configured. |
 | Unattended loop, health, alerts | next | PLAN.md phase 4. |
 | Several frames per worker | done | Each with its own type, albums and display settings ([decisions.md](decisions.md), entry 5). |
 | Browser slideshow frame (`web`) | done | Full-screen slideshow for any browser, with shared display settings and per-screen overrides. |
@@ -55,7 +60,6 @@ shows up.
 | Discover frames on the network | later | Instead of fixed IPs. Probe TCP 5555, identify Cozylas by `getprop` model and remember each by serial, so a new DHCP address is found again. mDNS doesn't help (see [cozyla-frame.md](cozyla-frame.md#finding-frames-on-a-network)). Could offer "Add this frame" on the dashboard. |
 | Lock down Cozyla adb from the worker | idea | On each connect, add an `iptables` rule on the frame allowing only the worker. A backup to network isolation ([cozyla-frame.md](cozyla-frame.md#recommendations)). |
 | Generic Android frames over adb | later | Most of `cozyla_adb` already applies; the folder and the app's library differ. |
-| Cozyla plays the `web` slideshow | idea | The frame has WebView 106; adb could open the slideshow link in a kiosk browser and skip the Cozyla app's database entirely. An alternative to PLAN.md phase 3. |
 | Slideshow extras | idea | Clock or date overlay, quiet hours (dim or blank screen), photo date and place captions, transition choices. |
 | DLNA/UPnP media server | idea | Many TVs and frames can browse a DLNA server. The worker would serve the synced folder. |
 | Chromecast / Google TV slideshow | idea | Directly, or through the HA `media_player` adapter above. |

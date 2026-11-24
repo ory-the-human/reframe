@@ -36,6 +36,17 @@ class FrameConfig:
     albums: list[dict[str, str]] = field(default_factory=list)
     # Overrides of the display defaults, keyed like config.DISPLAY_KEYS.
     display: dict[str, str] = field(default_factory=dict)
+    # cozyla_adb provisioned as a kiosk (frames/kiosk.py): the kiosk settings
+    # password, the original state to restore, etc. Empty when not provisioned.
+    kiosk: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_kiosk(self) -> bool:
+        return bool(self.kiosk.get("provisioned_at"))
+
+    @property
+    def shows_slideshow(self) -> bool:
+        return self.kind == "web" or self.is_kiosk
 
     @property
     def target(self) -> str:
@@ -118,7 +129,7 @@ def find(frames: list[FrameConfig], ref: str) -> FrameConfig:
 
 def by_key(frames: list[FrameConfig], key: str) -> Optional[FrameConfig]:
     for f in frames:
-        if f.kind == "web" and f.key and hmac.compare_digest(f.key, key):
+        if f.shows_slideshow and f.key and hmac.compare_digest(f.key, key):
             return f
     return None
 
@@ -147,6 +158,8 @@ def update(cfg: Config, frame: FrameConfig) -> None:
 
 def remove(cfg: Config, frame_id: str) -> None:
     frames = load_all(cfg)
+    if any(f.id == frame_id and f.kiosk for f in frames):
+        raise FrameError("restore this frame first: removing it would lose the record of how to undo the kiosk setup")
     save_all(cfg, [f for f in frames if f.id != frame_id])
     # A web frame's photos are only copies for the slideshow.
     shutil.rmtree(web_media_dir(cfg.data_dir, frame_id), ignore_errors=True)
