@@ -70,7 +70,7 @@ Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
 
 Open a slideshow frame's link from the dashboard on any screen with a browser. It plays
 full screen, fades between photos, picks up new photos and setting changes within
-a minute, and plays videos muted.
+10 seconds, and plays videos muted.
 
 - **Display settings**: seconds per photo, one photo or two, orientation,
   shuffle, and what fills the space around a photo (a blurred copy, or black). Defaults are in Settings → Display; each frame can override them on

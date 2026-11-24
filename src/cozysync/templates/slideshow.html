@@ -34,7 +34,7 @@
   var params = new URLSearchParams(location.search);
   var stage = document.getElementById("stage");
   var message = document.getElementById("message");
-  var REFRESH_MS = 60 * 1000;
+  var REFRESH_MS = 10 * 1000;  // how often to check for new photos and settings
   var MAX_VIDEO_MS = 5 * 60 * 1000;
 
   var display = null;   // settings from the server, with URL overrides applied
@@ -242,7 +242,12 @@
         var before = display ? JSON.stringify(display) : null;
         display = applyOverrides(data.display);
         items = data.items;
-        if (before !== JSON.stringify(display)) { queue = []; layoutStage(); }
+        if (before !== JSON.stringify(display)) {
+          queue = [];
+          layoutStage();
+          // A new interval applies to the photo on screen too, not only the next one.
+          if (!first && current && !current.querySelector("video")) schedule(display.interval * 1000);
+        }
         if (first) advance();
       })
       .catch(function () {
