@@ -32,6 +32,7 @@
   {% if h.uptime is not none %}<tr><th>Up for</th><td>{{ duration(h.uptime) }}</td></tr>{% endif %}
   {% if h.screen %}<tr><th>Screen</th><td>{{ "on" if h.screen.on else "off" }}{% if h.screen.why and h.screen.why not in ("on", "off") %} ({{ h.screen.why }}){% endif %}{% if h.screen.lux is not none %} · room {{ h.screen.lux }} lux{% endif %}{% if h.screen.brightness is not none %} · brightness {{ h.screen.brightness }}{% endif %}</td></tr>{% endif %}
   {% if h.foreground %}<tr><th>On screen</th><td><code>{{ h.foreground }}</code></td></tr>{% endif %}
+  {% if h.adb %}<tr><th>adb</th><td>{{ adb_states[h.adb] }}</td></tr>{% endif %}
   {% if h.time %}<tr><th>Frame's clock</th><td>{{ h.time }}{% if h.timezone %} ({{ h.timezone }}){% endif %}</td></tr>{% endif %}
   <tr><th>Agent</th><td>{{ h.agent_version or "?" }}{% if not h.config_current %} <span class="warn">· hasn't picked up the latest settings yet</span>{% endif %}</td></tr>
 </table>

@@ -250,80 +250,83 @@ def provision(
     start_url = f"{server}/show/{slideshow_key}"
     progress("Connecting to the frame", 5)
     k = Kiosk(address)
-    k.require_root()
+    try:
+        k.require_root()
 
-    original: Optional[dict[str, Any]] = state.get("original")
-    if original is None:
-        progress("Recording how the frame is set up", 12)
-        cozyla = k.installed(COZYLA_PKG)
-        original = {
-            "cozyla_installed": cozyla,
-            "cozyla_enabled": cozyla and k.enabled(COZYLA_PKG),
-            "kiosk_installed": k.installed(KIOSK_PKG),
+        original: Optional[dict[str, Any]] = state.get("original")
+        if original is None:
+            progress("Recording how the frame is set up", 12)
+            cozyla = k.installed(COZYLA_PKG)
+            original = {
+                "cozyla_installed": cozyla,
+                "cozyla_enabled": cozyla and k.enabled(COZYLA_PKG),
+                "kiosk_installed": k.installed(KIOSK_PKG),
+            }
+            if original["kiosk_installed"] and k.exists(KIOSK_PREFS):
+                backup = _backup_file(cfg, frame_id)
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                backup.write_text(k.read_file(KIOSK_PREFS))
+        if "agent_installed" not in original:
+            # Also for kiosks set up before the agent existed.
+            original = {**original, "agent_installed": k.installed(AGENT_PKG), "keep_alive": k.setting(KEEP_ALIVE_SETTING)}
+        password = state.get("password") or secrets.token_urlsafe(12)
+        save({**state, "original": original, "password": password})
+
+        if not k.installed(KIOSK_PKG):
+            progress(f"Downloading {KIOSK_NAME}", 20)
+            apk = kiosk_apk(cfg)
+            progress(f"Installing {KIOSK_NAME} on the frame", 35)
+            k.adb.run("install", str(apk), timeout=300)
+
+        # The app creates its settings folder on first start; edit its settings while it's stopped.
+        if not k.exists(KIOSK_PREFS_DIR):
+            progress(f"Starting {KIOSK_NAME} for the first time", 55)
+            k.sh(f"am start -n {KIOSK_PKG}/.MainActivity")
+            deadline = time.time() + 45
+            while not k.exists(KIOSK_PREFS_DIR):
+                if time.time() > deadline:
+                    raise FrameError(f"{KIOSK_NAME} didn't create its settings folder after starting")
+                time.sleep(2)
+            time.sleep(3)
+        progress("Writing the kiosk settings", 68)
+        k.sh(f"am force-stop {KIOSK_PKG}")
+        current = k.read_file(KIOSK_PREFS) if k.exists(KIOSK_PREFS) else None
+        k.write_app_file(KIOSK_PREFS, set_prefs(current, kiosk_settings(start_url, password)), KIOSK_PKG)
+
+        if k.version(AGENT_PKG) != AGENT_VERSION:
+            progress("Installing the reframe agent", 70)
+            k.adb.run("install", "-r", str(agent_apk(cfg)), timeout=300)
+        progress("Starting the reframe agent", 73)
+        keep = [p for p in (original["keep_alive"] or "").split(",") if p]
+        keep += [p for p in (AGENT_PKG, KIOSK_PKG) if p not in keep]
+        k.set_setting(KEEP_ALIVE_SETTING, ",".join(keep))
+        k.set_clock()
+        k.start_agent(server, agent_key)
+
+        # The kiosk is a home screen as soon as it's installed; turning Cozyla off leaves it the only one.
+        if original["cozyla_installed"] and k.enabled(COZYLA_PKG):
+            progress("Turning off the Cozyla app", 76)
+            k.sh(f"pm disable {COZYLA_PKG}")
+            progress("Waiting for Android to save the change", 82)
+            k.wait_saved(COZYLA_PKG, disabled=True)
+        progress("Opening the slideshow", 94)
+        k.home()
+        if not k.wait_focused(KIOSK_PKG):
+            raise FrameError(f"{KIOSK_NAME} didn't come to the front; the screen shows: {k.focused().strip()}")
+        if not k.running(AGENT_PKG):
+            raise FrameError("the reframe agent didn't start")
+
+        return {
+            "original": original,
+            "password": password,
+            "app": KIOSK_NAME,
+            "app_version": KIOSK_VERSION,
+            "agent_version": AGENT_VERSION,
+            "start_url": start_url,
+            "provisioned_at": int(time.time()),
         }
-        if original["kiosk_installed"] and k.exists(KIOSK_PREFS):
-            backup = _backup_file(cfg, frame_id)
-            backup.parent.mkdir(parents=True, exist_ok=True)
-            backup.write_text(k.read_file(KIOSK_PREFS))
-    if "agent_installed" not in original:
-        # Also for kiosks set up before the agent existed.
-        original = {**original, "agent_installed": k.installed(AGENT_PKG), "keep_alive": k.setting(KEEP_ALIVE_SETTING)}
-    password = state.get("password") or secrets.token_urlsafe(12)
-    save({**state, "original": original, "password": password})
-
-    if not k.installed(KIOSK_PKG):
-        progress(f"Downloading {KIOSK_NAME}", 20)
-        apk = kiosk_apk(cfg)
-        progress(f"Installing {KIOSK_NAME} on the frame", 35)
-        k.adb.run("install", str(apk), timeout=300)
-
-    # The app creates its settings folder on first start; edit its settings while it's stopped.
-    if not k.exists(KIOSK_PREFS_DIR):
-        progress(f"Starting {KIOSK_NAME} for the first time", 55)
-        k.sh(f"am start -n {KIOSK_PKG}/.MainActivity")
-        deadline = time.time() + 45
-        while not k.exists(KIOSK_PREFS_DIR):
-            if time.time() > deadline:
-                raise FrameError(f"{KIOSK_NAME} didn't create its settings folder after starting")
-            time.sleep(2)
-        time.sleep(3)
-    progress("Writing the kiosk settings", 68)
-    k.sh(f"am force-stop {KIOSK_PKG}")
-    current = k.read_file(KIOSK_PREFS) if k.exists(KIOSK_PREFS) else None
-    k.write_app_file(KIOSK_PREFS, set_prefs(current, kiosk_settings(start_url, password)), KIOSK_PKG)
-
-    if k.version(AGENT_PKG) != AGENT_VERSION:
-        progress("Installing the reframe agent", 70)
-        k.adb.run("install", "-r", str(agent_apk(cfg)), timeout=300)
-    progress("Starting the reframe agent", 73)
-    keep = [p for p in (original["keep_alive"] or "").split(",") if p]
-    keep += [p for p in (AGENT_PKG, KIOSK_PKG) if p not in keep]
-    k.set_setting(KEEP_ALIVE_SETTING, ",".join(keep))
-    k.set_clock()
-    k.start_agent(server, agent_key)
-
-    # The kiosk is a home screen as soon as it's installed; turning Cozyla off leaves it the only one.
-    if original["cozyla_installed"] and k.enabled(COZYLA_PKG):
-        progress("Turning off the Cozyla app", 76)
-        k.sh(f"pm disable {COZYLA_PKG}")
-        progress("Waiting for Android to save the change", 82)
-        k.wait_saved(COZYLA_PKG, disabled=True)
-    progress("Opening the slideshow", 94)
-    k.home()
-    if not k.wait_focused(KIOSK_PKG):
-        raise FrameError(f"{KIOSK_NAME} didn't come to the front; the screen shows: {k.focused().strip()}")
-    if not k.running(AGENT_PKG):
-        raise FrameError("the reframe agent didn't start")
-
-    return {
-        "original": original,
-        "password": password,
-        "app": KIOSK_NAME,
-        "app_version": KIOSK_VERSION,
-        "agent_version": AGENT_VERSION,
-        "start_url": start_url,
-        "provisioned_at": int(time.time()),
-    }
+    finally:
+        k.adb.close()
 
 
 def deprovision(cfg: Config, frame_id: str, address: str, state: dict[str, Any], progress: Progress = _quiet) -> None:
@@ -333,35 +336,38 @@ def deprovision(cfg: Config, frame_id: str, address: str, state: dict[str, Any],
         raise FrameError("this frame has no record of its original state, so it can't be restored automatically")
     progress("Connecting to the frame", 5)
     k = Kiosk(address)
-    k.require_root()
+    try:
+        k.require_root()
 
-    # The agent goes first, so its watchdog doesn't turn the Cozyla app off again.
-    if "agent_installed" in original:
-        if not original["agent_installed"] and k.installed(AGENT_PKG):
-            progress("Removing the reframe agent", 12)
-            k.adb.run("uninstall", AGENT_PKG, timeout=120)
-        k.set_setting(KEEP_ALIVE_SETTING, original["keep_alive"])
+        # The agent goes first, so its watchdog doesn't turn the Cozyla app off again.
+        if "agent_installed" in original:
+            if not original["agent_installed"] and k.installed(AGENT_PKG):
+                progress("Removing the reframe agent", 12)
+                k.adb.run("uninstall", AGENT_PKG, timeout=120)
+            k.set_setting(KEEP_ALIVE_SETTING, original["keep_alive"])
 
-    # Cozyla becomes a home screen again before the kiosk stops being one.
-    if original["cozyla_installed"] and original["cozyla_enabled"]:
-        progress("Turning the Cozyla app back on", 20)
-        k.sh(f"pm enable {COZYLA_PKG}")
-        progress("Waiting for Android to save the change", 35)
-        k.wait_saved(COZYLA_PKG, disabled=False)
-    if original["kiosk_installed"]:
-        progress(f"Restoring {KIOSK_NAME}'s own settings", 60)
-        k.sh(f"am force-stop {KIOSK_PKG}")
-        backup = _backup_file(cfg, frame_id)
-        if backup.exists():
-            k.write_app_file(KIOSK_PREFS, backup.read_text(), KIOSK_PKG)
-        else:
-            k.sh(f"rm -f {KIOSK_PREFS}")
-    elif k.installed(KIOSK_PKG):
-        progress(f"Removing {KIOSK_NAME}", 60)
-        k.adb.run("uninstall", KIOSK_PKG, timeout=120)
-    # Home only once a single home screen is left, or Android asks which one to use.
-    progress("Opening the Cozyla app", 85)
-    k.home()
-    if original["cozyla_installed"] and original["cozyla_enabled"] and not k.wait_focused(COZYLA_PKG):
-        raise FrameError(f"the Cozyla app didn't come back to the front; the screen shows: {k.focused().strip()}")
-    _backup_file(cfg, frame_id).unlink(missing_ok=True)
+        # Cozyla becomes a home screen again before the kiosk stops being one.
+        if original["cozyla_installed"] and original["cozyla_enabled"]:
+            progress("Turning the Cozyla app back on", 20)
+            k.sh(f"pm enable {COZYLA_PKG}")
+            progress("Waiting for Android to save the change", 35)
+            k.wait_saved(COZYLA_PKG, disabled=False)
+        if original["kiosk_installed"]:
+            progress(f"Restoring {KIOSK_NAME}'s own settings", 60)
+            k.sh(f"am force-stop {KIOSK_PKG}")
+            backup = _backup_file(cfg, frame_id)
+            if backup.exists():
+                k.write_app_file(KIOSK_PREFS, backup.read_text(), KIOSK_PKG)
+            else:
+                k.sh(f"rm -f {KIOSK_PREFS}")
+        elif k.installed(KIOSK_PKG):
+            progress(f"Removing {KIOSK_NAME}", 60)
+            k.adb.run("uninstall", KIOSK_PKG, timeout=120)
+        # Home only once a single home screen is left, or Android asks which one to use.
+        progress("Opening the Cozyla app", 85)
+        k.home()
+        if original["cozyla_installed"] and original["cozyla_enabled"] and not k.wait_focused(COZYLA_PKG):
+            raise FrameError(f"the Cozyla app didn't come back to the front; the screen shows: {k.focused().strip()}")
+        _backup_file(cfg, frame_id).unlink(missing_ok=True)
+    finally:
+        k.adb.close()

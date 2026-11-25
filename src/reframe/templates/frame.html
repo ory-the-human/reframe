@@ -107,6 +107,8 @@
     </table>
     <p class="muted">To change the kiosk's own settings on the frame, tap the top-left quarter of the
       screen 10 times quickly, then enter the password.</p>
+    <p class="muted">The buttons below use adb, which the agent keeps closed except for 2 minutes after the
+      frame powers on: unplug the frame, plug it back in, and click within 2 minutes.</p>
     <div class="actions" style="margin-top:12px">
       <form class="inline" method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}">
         <button class="secondary">Update kiosk settings</button></form>

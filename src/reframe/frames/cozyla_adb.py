@@ -29,8 +29,8 @@ def connect(address: str) -> None:
     ).stdout
     if "connected to" not in out:
         raise FrameError(
-            f"could not connect to {address}: {out.strip()} "
-            "(on first connect, tap 'Allow' on the frame's debugging prompt and retry)"
+            f"could not connect to {address}: {out.strip()} (a reframe kiosk opens adb only for "
+            "2 minutes after it powers on: unplug the frame, plug it back in and retry)"
         )
 
 
@@ -49,6 +49,12 @@ class CozylaAdbFrame:
             self._connected = True
         return adb(self.address, *args, timeout=timeout)
 
+    def close(self) -> None:
+        """Disconnect: the agent on a kiosk frame closes adb once nothing is connected."""
+        if self._connected:
+            subprocess.run(["adb", "disconnect", self.address], capture_output=True, timeout=30)
+            self._connected = False
+
     def shell(self, command: str, timeout: int = 60) -> str:
         """Run a shell command and raise if it fails.
 
@@ -66,9 +72,12 @@ class CozylaAdbFrame:
             "android": "ro.build.version.release",
             "build": "ro.build.display.id",
         }
-        info = {k: self.run("shell", "getprop", p).strip() for k, p in props.items()}
-        info["whoami"] = self.run("shell", "id", "-un").strip()
-        info["screen"] = self.run("shell", "wm", "size").strip()
+        try:
+            info = {k: self.run("shell", "getprop", p).strip() for k, p in props.items()}
+            info["whoami"] = self.run("shell", "id", "-un").strip()
+            info["screen"] = self.run("shell", "wm", "size").strip()
+        finally:
+            self.close()
         info["directory"] = self.directory
         return info
 

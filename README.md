@@ -107,8 +107,12 @@ server" (`PUBLIC_URL`), or the address you opened the web UI with.
 Kiosk frames also get a **Screen** section (a schedule and turning off in a dark
 room, with defaults in Settings) and a **Health** section (temperatures, load,
 memory, storage, uptime). Both come from the reframe agent, a small app that kiosk
-setup installs on the frame; see [docs/agent.md](docs/agent.md). Until an agent
-release is published, set `AGENT_APK` to a local build (`agent/build.sh`).
+setup installs on the frame; see [docs/agent.md](docs/agent.md). The agent also
+keeps the frame as setup left it, and closes the frame's adb (root, no password,
+open to the network) 2 minutes after it powers on. To update or restore a kiosk,
+unplug the frame, plug it back in, and start within those 2 minutes; adb stays
+open while reframe is connected. To try a local agent build, set `AGENT_APK` to it
+(`agent/build.sh`).
 
 `reframe frame-put FRAME photo.jpg …` copies files to a frame by hand,
 which is handy for trying the slideshow before the sync engine exists.

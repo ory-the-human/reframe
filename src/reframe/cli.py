@@ -291,6 +291,7 @@ def cmd_health(cfg: config.Config, args: argparse.Namespace) -> None:
             "uptime": agent.duration(h["uptime"]) if h["uptime"] is not None else "",
             "screen": json.dumps(h["screen"]) if h["screen"] else "",
             "on screen": h["foreground"] or "",
+            "adb": agent.ADB_STATES.get(h["adb"] or "", ""),
             "clock": f"{h['time']} ({h['timezone']})" if h["time"] else "",
             "agent": (h["agent_version"] or "?") + ("" if h["config_current"] else ", hasn't picked up the latest settings"),
         }
@@ -333,9 +334,13 @@ def cmd_frame_put(cfg: config.Config, args: argparse.Namespace) -> None:
     """Copy local files to a frame, for testing before the sync engine exists."""
     f = registry.find(frames.load_all(cfg), args.frame)
     adapter = frames.build(cfg, f)
-    for name in args.files:
-        path = Path(name)
-        print(f"{path.name} -> {adapter.put(path, path.name)}")
+    try:
+        for name in args.files:
+            path = Path(name)
+            print(f"{path.name} -> {adapter.put(path, path.name)}")
+    finally:
+        if hasattr(adapter, "close"):
+            adapter.close()
 
 
 def _print_progress(step: str, pct: int) -> None:

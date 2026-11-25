@@ -70,7 +70,8 @@ def _qr_svg(data: str) -> Markup:
     return Markup(img.to_string(encoding="unicode"))
 
 
-app.jinja_env.globals.update(qr_svg=_qr_svg, duration=agent.duration, clock=agent.clock, sparkline=agent.sparkline)
+app.jinja_env.globals.update(qr_svg=_qr_svg, duration=agent.duration, clock=agent.clock, sparkline=agent.sparkline,
+                              adb_states=agent.ADB_STATES)
 
 
 def _guard(view):

@@ -34,7 +34,8 @@ import java.util.TimeZone;
 
 /**
  * The reframe agent: keeps the frame's screen on its schedule and the room light,
- * keeps the clock right, and reports the frame's health to the reframe server.
+ * keeps the clock right, keeps the frame set up as reframe left it (Watchdog), and
+ * reports the frame's health to the reframe server.
  *
  * It only ever calls the server (docs/agent.md), and keeps working on its last
  * config while the server is unreachable. Started at boot, and by reframe with the
@@ -45,16 +46,17 @@ public class AgentService extends Service {
     private static final long CLOCK_SLACK_MS = 10 * 1000;
     private static final int HTTP_TIMEOUT_MS = 10 * 1000;
 
-    private HandlerThread thread;
-    private Handler handler;
+    private HandlerThread thread, watchdogThread;
+    private Handler handler, watchdogHandler;
     private PowerManager.WakeLock wakeLock;
     private Screen screen;
-    private JSONObject config;
+    private volatile JSONObject config;
     private boolean refetch = true;
     private long nextReport;
     private float ambient = Float.NaN;
     private JSONArray fixes = new JSONArray();
     private String version = "?";
+    private Watchdog watchdog;
 
     @Override
     public void onCreate() {
@@ -98,6 +100,32 @@ public class AgentService extends Service {
             }
         }, new IntentFilter(Intent.ACTION_SCREEN_ON), null, handler);
 
+        watchdog = new Watchdog(this, new Watchdog.Host() {
+            public JSONObject config() {
+                return config;
+            }
+
+            public boolean screenOn() {
+                return screen.isOn();
+            }
+
+            public void fixed(String what) {
+                addFix(what, System.currentTimeMillis() / 1000);
+            }
+        });
+        watchdogThread = new HandlerThread(TAG + "-watchdog");
+        watchdogThread.start();
+        watchdogHandler = new Handler(watchdogThread.getLooper());
+        watchdogHandler.postDelayed(new Runnable() {
+            public void run() {
+                try {
+                    watchdog.check();
+                } catch (Exception e) {
+                    Log.e(TAG, "watchdog failed", e);
+                }
+                watchdogHandler.postDelayed(this, Watchdog.CHECK_MS);
+            }
+        }, Watchdog.CHECK_MS);
         handler.post(tick);
         Log.i(TAG, "agent " + version + " started");
     }
@@ -123,6 +151,7 @@ public class AgentService extends Service {
     @Override
     public void onDestroy() {
         thread.quit();
+        watchdogThread.quit();
         wakeLock.release();
         super.onDestroy();
     }
@@ -171,13 +200,19 @@ public class AgentService extends Service {
         try {
             if (refetch || config == null) fetchConfig(server, key);
             // Fixes found while this report is on its way go into the next one.
-            JSONArray sending = fixes;
-            fixes = new JSONArray();
+            JSONArray sending;
+            synchronized (this) {
+                sending = fixes;
+                fixes = new JSONArray();
+            }
             JSONObject reply;
             try {
                 reply = new JSONObject(call(server + "/agent/v1/report", key, report(sending)));
             } catch (Exception e) {
-                for (int i = 0; i < sending.length(); i++) fixes.put(sending.get(i));
+                synchronized (this) {
+                    for (int i = 0; i < fixes.length(); i++) sending.put(fixes.get(i));
+                    fixes = sending;
+                }
                 throw e;
             }
             if (!reply.optString("config_version").equals(config.optString("version"))) fetchConfig(server, key);
@@ -213,6 +248,7 @@ public class AgentService extends Service {
         s.put("brightness", Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, -1));
         r.put("screen", s);
         r.put("foreground", Stats.foreground());
+        r.put("adb", watchdog.adbState);
         r.put("fixes", sending);
         return r;
     }
@@ -248,12 +284,19 @@ public class AgentService extends Service {
         SimpleDateFormat set = new SimpleDateFormat("MMddHHmmyyyy.ss", Locale.US);
         set.setTimeZone(TimeZone.getTimeZone("UTC"));
         if (Root.run("date -u " + set.format(new Date(serverMs))) != null) {
-            String what = "Set the clock from the server (it was " + describe(off) + ")";
-            Log.i(TAG, what);
+            addFix("Set the clock from the server (it was " + describe(off) + ")", serverMs / 1000);
+        }
+    }
+
+    /** Something the agent put right, for the next report. */
+    private synchronized void addFix(String what, long at) {
+        Log.i(TAG, what);
+        try {
             JSONObject fix = new JSONObject();
-            fix.put("at", serverMs / 1000);
+            fix.put("at", at);
             fix.put("what", what);
             fixes.put(fix);
+        } catch (Exception ignored) {
         }
     }
 

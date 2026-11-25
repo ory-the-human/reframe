@@ -6,7 +6,7 @@ adb hangs now and then until the frame is power-cycled.
 
 **Status:** the server side is done (settings, the two endpoints below, the health
 pages and CLI). The app (`agent/`) runs the screen schedule, dark-room sleep, the
-clock and health reports, and kiosk setup installs it. The watchdog is next.
+clock, the watchdog and health reports, and kiosk setup installs it.
 
 ## Building and releasing
 
@@ -24,10 +24,24 @@ Keep a backup of it.
 
 - **Screen:** turns the screen off and on following the frame's schedule and the
   room light (below), on the frame itself, also while the server is off.
-- **Watchdog:** keeps the kiosk app in front (restarts it if it crashes or something
-  else takes the screen), keeps the packages in `keep_disabled` turned off, keeps
-  the kiosk's settings file matching `kiosk.settings`, and restarts adb when it
-  stops answering. Each fix goes into the next report.
+- **Watchdog:** checks every 30 s, on its own thread, and puts back:
+  - the packages in `keep_disabled` (the Cozyla app), if they're turned on;
+  - the agent and the kiosk on the firmware's keep-alive list;
+  - the kiosk's settings file, when a value differs from `kiosk.settings` for
+    2 minutes (setup rewrites it too). It stops the kiosk, rewrites only those
+    values (the password and anything else stay) and opens it again;
+  - the kiosk in front, when another app has had the screen for 5 minutes while
+    it's on (time enough to use Android's settings);
+  - adb, by restarting adbd when it's stuck (below);
+  - adb closed: 2 minutes after power-on, once nothing is connected, it turns
+    network adb off (`setprop service.adb.tcp.port -1` and restarts adbd).
+    The frame's `/init.sun8i.rc` sets the port to 5555 at every boot, so
+    power-cycling opens it again for the next 2 minutes, whatever the agent does;
+    it stays open while someone is connected. The server disconnects after each
+    adb job so it doesn't hold it open. Reports say whether adb is on, in use or
+    off.
+
+  Each fix goes into the next report. Tested by breaking each one on the frame.
 - **Clock:** sets the frame's clock from the server's, since nothing else does on
   a kiosk frame.
 - **Health:** reports temperatures, CPU load, memory, storage, uptime and the
@@ -140,3 +154,17 @@ counts as offline after 3 minutes without a report.
   of allowed apps is the system setting `kill_background_services_list`
   (comma-separated, read live; the setting `kill_background_services` turns the
   manager on, read at boot). Setup adds the agent and the kiosk to it.
+- **adb hangs:** adbd serves one connection at a time. Any other connection is
+  accepted and then left waiting, its first message unread, even from a real adb
+  client. So when the connection it serves dies without closing (Wi-Fi drops, the
+  host sleeps), every new one waits forever and adb says "device offline" until a
+  power cycle. The watchdog reads `/proc/net/tcp`: a connection to the adb port
+  still waiting with the same unread bytes 30 s later is stuck, and it restarts
+  adbd (`stop adbd; start adbd`); clients reconnect on their own. With no
+  connection at all it sends adb's opening message (`CNXN`) itself and restarts
+  adbd after two unanswered tries. Tested with a held, unanswered connection: adbd
+  restarted within a minute and the host's adb reconnected. A side effect: two
+  hosts using one frame's adb at once take turns, since the second one's wait
+  ends in a restart.
+- **Shell tools:** the frame's `grep` crashes as it exits and its `sed` mangles the
+  lines it edits, so the agent filters and edits in Java.

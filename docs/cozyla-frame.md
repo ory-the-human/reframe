@@ -78,6 +78,10 @@ in the boot image, which risks bricking it. We don't.
    `iptables` rule letting only its own address reach 5555, on every connect.
    It's lost on reboot, so it complements 1 and doesn't replace it.
 4. Treat a working adb connection as proof of nothing: anyone can connect.
+5. **Keep adb closed.** On a reframe kiosk the agent turns network adb off
+   2 minutes after power-on, so it's only open right after a power cycle
+   ([agent.md](agent.md)). Frames still running the Cozyla app (`cozyla_adb`)
+   keep it open.
 
 ## How the Cozyla app shows photos (tested 2026-11-24)
 

@@ -133,9 +133,17 @@ def health(cfg: Config, frame: registry.FrameConfig) -> Optional[dict[str, Any]]
         "timezone": report.get("timezone"),
         "screen": report.get("screen") if isinstance(report.get("screen"), dict) else {},
         "foreground": report.get("foreground"),
+        "adb": report.get("adb") if report.get("adb") in ADB_STATES else None,
         "fixes": list(reversed(state.get("fixes", [])))[:10],
         "history": state.get("history", []),
     }
+
+
+ADB_STATES = {
+    "on": "on (the agent closes it 2 minutes after power-on)",
+    "connected": "on, in use",
+    "off": "off until the frame is power-cycled",
+}
 
 
 def clock(at: float) -> str:
