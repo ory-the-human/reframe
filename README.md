@@ -5,9 +5,9 @@ and **frames** are plug-ins:
 
 | Sources | Frames |
 |---|---|
-| `google_ambient`: Google Photos via the [Photos Ambient API](https://developers.google.com/photos/ambient/guides/about) (needs the Google Photos partner program) | `cozyla_adb`: a Cozyla (or rooted Android) frame over adb on Wi-Fi |
-| next: Google Photos share link, Immich | `folder`: any folder or mounted share a display reads from |
-| | `web`: a full-screen browser slideshow served by reframe, for any kiosk browser, tablet, TV browser or web view |
+| `share_link` (default): Google Photos shared albums, added by their share links | `cozyla_adb`: a Cozyla (or rooted Android) frame over adb on Wi-Fi |
+| `google_ambient`: Google Photos via the [Photos Ambient API](https://developers.google.com/photos/ambient/guides/about) (needs the Google Photos partner program) | `folder`: any folder or mounted share a display reads from |
+| next: Immich | `web`: a full-screen browser slideshow served by reframe, for any kiosk browser, tablet, TV browser or web view |
 
 One worker drives any number of frames, each with its own type, albums and
 display settings. Pick the source in `.env` or the web UI's settings, and add
@@ -20,24 +20,16 @@ hosted Google sign-in, [docs/cozyla-frame.md](docs/cozyla-frame.md) for Cozyla
 discovery and security, and [docs/roadmap.md](docs/roadmap.md) for where it's going
 (including Home Assistant).
 
-**Status:** the Ambient API returns 403 for projects outside Google's partner
-program, so the Google setup below only works for an accepted project. A second
-source is next.
+**Status:** shared albums sync to every frame type. The Ambient API returns 403
+for projects outside Google's partner program, so that source only works for an
+accepted project.
 
-## 1. Google Cloud setup (one time, `google_ambient` source only)
+## 1. Share an album
 
-1. Go to <https://console.cloud.google.com/> and create a project, e.g. `reframe`.
-2. **APIs & Services → Library**: search for **Photos Ambient API** and click **Enable**.
-3. **APIs & Services → OAuth consent screen** (Google Auth Platform):
-   - User type **External**, app name `reframe`, with your email as support and
-     developer contact.
-   - **Data access / Scopes**: add `https://www.googleapis.com/auth/photosambient.mediaitems`.
-   - **Audience / Test users**: add your own Google account.
-   - The project must be accepted into the
-     [Google Photos partner program](https://developers.google.com/photos/partner-program/overview);
-     otherwise registering the frame fails with 403 `PERMISSION_DENIED`.
-4. **Credentials → Create credentials → OAuth client ID**, application type
-   **TVs and Limited Input devices**. Copy the client ID and secret.
+In Google Photos, open the album, then **Share → Create link**, and copy the
+link (`https://photos.app.goo.gl/…`). Anyone with the link can see the album, so
+treat it as a password; turning link sharing off for the album (or deleting the
+link) revokes it. reframe keeps the links in `data/albums.json`.
 
 ## 2. Start it on the NAS
 
@@ -48,15 +40,9 @@ docker compose up -d --build
 
 Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
 
-1. **Settings**: pick the source and, for Google, paste the OAuth client ID and secret.
-2. **Connect Google Photos**: the dashboard shows a code and a QR code. Sign in
-   on your phone with the test-user account and pick the albums for the frame.
-   The page updates by itself as each step finishes.
-3. **Listing test**: lists every album in full and saves a snapshot to `data/`.
-   Set "Download samples" above 0 to fetch a few files sized for the frame. Run it
-   again after adding or removing a photo; the dashboard shows the changes between
-   the last two snapshots.
-4. **Frames → Add a frame** for each screen: its type, the albums it shows (none
+1. **Settings → Albums**: paste each album's share link, with a name if you want
+   another than the album's title (or `reframe albums add LINK --name …`).
+2. **Frames → Add a frame** for each screen: its type, the albums it shows (none
    ticked means all) and, for slideshows, its display settings. **Check**
    confirms the worker can reach it. For `cozyla_adb`, a Cozyla connects without
    asking: its adb has no authentication and runs as root, so keep it on an
@@ -65,6 +51,38 @@ Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
    allow" and check again (the key is kept in `data/.android/`). For `folder`,
    mount the folder in `docker-compose.yml`. For `web`, the dashboard shows the
    frame's slideshow link and a QR code.
+3. **Sync**: the server syncs every `SYNC_MINUTES` (Settings → "Minutes between
+   syncs", default 60, 0 for off), starting 30 seconds after it starts. **Sync now**
+   on the dashboard runs one at once; the dashboard shows what the last run did
+   per frame and how many photos each frame holds. `reframe sync --dry-run` shows
+   what a sync would change without changing anything. New photos are copied to
+   the frames; a photo that leaves an album is removed after it's missing from two
+   complete listings in a row (longer if many leave at once), and an album a frame
+   stops showing is removed from it at once.
+4. **Listing test** (optional): lists every album in full and saves a snapshot to
+   `data/`. Set "Download samples" above 0 to fetch a few files sized for the
+   frame. Run it again after adding or removing a photo; the dashboard shows the
+   changes between the last two snapshots.
+
+### Google Photos Ambient source (needs partner approval)
+
+Only for a Google Cloud project accepted into the
+[Google Photos partner program](https://developers.google.com/photos/partner-program/overview);
+otherwise registering the frame fails with 403 `PERMISSION_DENIED`.
+
+1. Go to <https://console.cloud.google.com/> and create a project, e.g. `reframe`.
+2. **APIs & Services → Library**: search for **Photos Ambient API** and click **Enable**.
+3. **APIs & Services → OAuth consent screen** (Google Auth Platform):
+   - User type **External**, app name `reframe`, with your email as support and
+     developer contact.
+   - **Data access / Scopes**: add `https://www.googleapis.com/auth/photosambient.mediaitems`.
+   - **Audience / Test users**: add your own Google account.
+4. **Credentials → Create credentials → OAuth client ID**, application type
+   **TVs and Limited Input devices**. Copy the client ID and secret.
+5. In **Settings**, pick the Ambient source and paste the client ID and secret.
+6. **Connect Google Photos**: the dashboard shows a code and a QR code. Sign in
+   on your phone with the test-user account and pick the albums for the frame.
+   The page updates by itself as each step finishes.
 
 ### Browser slideshow (`web` frames)
 
@@ -73,7 +91,8 @@ full screen, fades between photos, picks up new photos and setting changes withi
 10 seconds, and plays videos muted.
 
 - **Display settings**: seconds per photo, one photo or two, orientation,
-  shuffle, and what fills the space around a photo (a blurred copy, or black). Defaults are in Settings → Display; each frame can override them on
+  shuffle, what fills the space around a photo (a blurred copy, or black), and the
+  date each photo was taken, shown at its bottom. Defaults are in Settings → Display; each frame can override them on
   its page, and each screen again in its link.
 - **Two photos:** when a photo's orientation doesn't match the screen (portrait
   photos on a landscape screen), two of them share it, side by side or stacked.
@@ -82,7 +101,7 @@ full screen, fades between photos, picks up new photos and setting changes withi
   slideshow rotates itself.
 - **Swipe** left or right (or press the arrow keys) for the next or previous photo.
 - **Per-screen overrides:** add them to the frame's link, e.g.
-  `?interval=10&layout=pair&orientation=portrait&shuffle=no&fill=black`.
+  `?interval=10&layout=pair&orientation=portrait&shuffle=no&fill=black&date=no`.
 - The link contains a secret instead of the UI password, because kiosk browsers
   can't answer a password prompt. Only give it to your screens.
 
@@ -114,8 +133,7 @@ unplug the frame, plug it back in, and start within those 2 minutes; adb stays
 open while reframe is connected. To try a local agent build, set `AGENT_APK` to it
 (`agent/build.sh`).
 
-`reframe frame-put FRAME photo.jpg …` copies files to a frame by hand,
-which is handy for trying the slideshow before the sync engine exists.
+`reframe frame-put FRAME photo.jpg …` copies files to a frame by hand.
 
 ### CLI
 
@@ -123,6 +141,12 @@ The same steps are available on the command line, which is handy when testing
 from a laptop:
 
 ```sh
+docker compose run --rm reframe albums                          # shared albums: id and name
+docker compose run --rm reframe albums add https://photos.app.goo.gl/… --name "Holidays"
+docker compose run --rm reframe albums rename Holidays "Summer"
+docker compose run --rm reframe albums remove Summer            # its photos leave the frames at the next sync
+docker compose run --rm reframe sync --dry-run                  # what a sync would change
+docker compose run --rm reframe sync                            # sync all frames now
 docker compose run --rm reframe login         # google_ambient: sign in, pick albums
 docker compose run --rm reframe device        # google_ambient: device, albums, token age
 docker compose run --rm reframe list --download 3
@@ -156,8 +180,10 @@ DATA_DIR=./data .venv/bin/reframe web --port 1992
 ## Notes
 
 - Photos are pass-through: the sync streams each one to the frame and keeps
-  only state on the NAS. `data/samples/` is only for the listing test.
-- `data/` holds OAuth tokens and the OAuth client secret. It's git-ignored and
+  only state on the NAS, except for `web` and kiosk frames, which play from the
+  server and keep their photos in `data/frames/<id>/`. `data/samples/` is only for
+  the listing test.
+- `data/` holds the album share links, OAuth tokens and the OAuth client secret. It's git-ignored and
   written with `0600` permissions.
 - The web UI is for the LAN only; don't expose port 1992 to the internet. Set
   `WEB_PASSWORD`, because without it anyone on your network can use the UI.

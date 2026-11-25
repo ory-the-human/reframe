@@ -11,8 +11,8 @@ scheduled), **idea** (worth recording, undecided).
 
 | Item | Status | Notes |
 |---|---|---|
-| Second source: Google Photos share link or Immich | now | Pick one. Share link: keeps photos in Google Photos, but the link is a secret and the page can change. Immich: private and stable, but photos must be in Immich. |
-| Sync engine (pass-through, safe removal) | now | PLAN.md phase 2. Uses only the `Source` and `Frame` interfaces. |
+| Second source: Google Photos share link | done | `share_link`, the default: shared albums added by their links in Settings → Albums or with `reframe albums`, kept in `/data/albums.json`. The link is a secret and Google can change the page, so anything unexpected makes a listing incomplete and nothing is removed. Immich stays an option for later. |
+| Sync engine (pass-through, safe removal) | done | PLAN.md phase 2. Uses only the `Source` and `Frame` interfaces. The web server runs it every `SYNC_MINUTES`; Sync now and the last run's results are on the dashboard, and `reframe sync [--dry-run]` runs it by hand. |
 | Remove `reframe frame-put` | with the sync engine | A testing tool from before the sync engine, and it won't be used after it: the sync engine calls the same `Frame.put` itself. Remove the command and its README lines; keep `frame-check`. |
 | Show synced photos in the Cozyla app | idea | Works only with the frame kept offline ([cozyla-frame.md](cozyla-frame.md)); the kiosk below replaced it. |
 | Cozyla frames as kiosks | done | One-click setup and exact restore from the frame's page ([decisions.md](decisions.md), entry 7). |
@@ -24,6 +24,7 @@ scheduled), **idea** (worth recording, undecided).
 | Unattended loop, health, alerts | next | PLAN.md phase 4. |
 | Several frames per worker | done | Each with its own type, albums and display settings ([decisions.md](decisions.md), entry 5). |
 | Browser slideshow frame (`web`) | done | Full-screen slideshow for any browser, with shared display settings and per-screen overrides. |
+| Date taken caption | done | Each photo's date at its bottom (`display_date`). Shown in the screen's own time zone, not where the photo was taken. |
 
 ## Google Photos for everyone (hosted auth)
 
@@ -62,7 +63,7 @@ shows up.
 | Discover frames on the network | later | Instead of fixed IPs. Probe TCP 5555, identify Cozylas by `getprop` model and remember each by serial, so a new DHCP address is found again. mDNS doesn't help (see [cozyla-frame.md](cozyla-frame.md#finding-frames-on-a-network)). Could offer "Add this frame" on the dashboard. |
 | Lock down Cozyla adb from the worker | idea | On each connect, add an `iptables` rule on the frame allowing only the worker. A backup to network isolation ([cozyla-frame.md](cozyla-frame.md#recommendations)). |
 | Generic Android frames over adb | later | Most of `cozyla_adb` already applies; the folder and the app's library differ. |
-| Slideshow extras | idea | Clock or date overlay, quiet hours (dim or blank screen), photo date and place captions, transition choices. |
+| Slideshow extras | idea | Clock or date overlay, quiet hours (dim or blank screen), place captions (shared albums strip GPS), transition choices. |
 | DLNA/UPnP media server | idea | Many TVs and frames can browse a DLNA server. The worker would serve the synced folder. |
 | Chromecast / Google TV slideshow | idea | Directly, or through the HA `media_player` adapter above. |
 | Immich, Nextcloud, plain folders as sources | later | Each is one `Source` implementation. |
@@ -75,4 +76,4 @@ shows up.
 | Rewrite the worker in Go too? | Keep Python; rewrite in Go | Keep Python until the worker settles. Revisit if the HA add-on image size or memory on small devices becomes a problem. |
 | Where to host the broker | Fly.io, AWS serverless, VPS | Fly.io: simplest and about $3/month. |
 | License | MIT, Apache-2.0, AGPL | Undecided. AGPL keeps hosted forks of the broker open. |
-| First non-Google source | Share link, Immich | Undecided. |
+| First non-Google source | Share link, Immich | Share link, built first. Immich stays an option for later. |

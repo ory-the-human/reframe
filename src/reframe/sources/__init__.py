@@ -4,11 +4,16 @@ from ..config import Config
 from .base import Album, Listing, MediaItem, Source
 
 KINDS = {
+    "share_link": "Google Photos shared albums (share links)",
     "google_ambient": "Google Photos (Ambient API, needs partner approval)",
 }
 
 
 def get_source(cfg: Config) -> Source:
+    if cfg.source == "share_link":
+        from .share_link import ShareLinkSource
+
+        return ShareLinkSource(cfg)
     if cfg.source == "google_ambient":
         from .google_ambient import AmbientSource
 

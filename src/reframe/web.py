@@ -16,12 +16,14 @@ from urllib.parse import urlparse
 
 import qrcode
 import qrcode.image.svg
+import requests
 from flask import Flask, Response, abort, flash, redirect, render_template, request, send_from_directory, url_for
 from markupsafe import Markup
 
-from . import agent, config, frames, snapshots, sources
+from . import agent, config, frames, snapshots, sources, sync
 from .frames import kiosk, registry
 from .frames import web as web_frame
+from .sources import share_link
 from .sources.google_ambient.api import AmbientClient
 from .sources.google_ambient.auth import TokenStore
 from .sources.google_ambient.login import LoginFlow
@@ -115,6 +117,10 @@ def index():
         listing=_last_listing,
         latest_diff=snapshots.diff_latest(cfg),
         frames=[_frame_view(cfg, f) for f in frames.load_all(cfg)],
+        sync_run=sync.last_run(cfg),
+        sync_running=_sync_lock.locked(),
+        counts=sync.counts(cfg),
+        now=time.time(),
     )
 
 
@@ -122,7 +128,7 @@ def index():
 def settings():
     cfg = config.load()
     if request.method == "POST":
-        fields = ("source", "client_id", "device_name", "public_url", *config.DISPLAY_KEYS)
+        fields = ("source", "client_id", "device_name", "public_url", "sync_minutes", *config.DISPLAY_KEYS)
         updates = {k: request.form.get(k, "").strip() for k in fields}
         try:
             updates.update({k: "" for k in config.SCREEN_KEYS} | _screen_from_form())
@@ -141,7 +147,69 @@ def settings():
         source_kinds=sources.KINDS,
         display_choices=config.DISPLAY_CHOICES,
         screen_choices=config.SCREEN_CHOICES,
+        albums=share_link.saved_albums(cfg) if cfg.source == "share_link" else None,
     )
+
+
+@app.post("/albums/add")
+def album_add():
+    try:
+        a = share_link.add(config.load(), request.form.get("url", ""), request.form.get("name", ""))
+        flash(f"Added {a['name']}. Frames that show every album get it at the next sync.", "ok")
+    except (share_link.ShareLinkError, requests.RequestException) as e:
+        flash(f"Couldn't add the album: {e}", "error")
+    return redirect(url_for("settings") + "#albums")
+
+
+@app.post("/albums/<album_id>/remove")
+def album_remove(album_id: str):
+    try:
+        a = share_link.remove(config.load(), album_id)
+        flash(f"Removed {a['name']}. The next sync takes its photos off the frames.", "ok")
+    except share_link.ShareLinkError as e:
+        flash(str(e), "error")
+    return redirect(url_for("settings") + "#albums")
+
+
+# Held while this process syncs; sync.run's file lock also covers the CLI.
+_sync_lock = threading.Lock()
+_last_sync = 0.0
+
+
+def _run_sync(reason: str) -> None:
+    global _last_sync
+    if not _sync_lock.acquire(blocking=False):
+        return
+    try:
+        _last_sync = time.time()
+        summary = sync.run(config.load(), log=print)
+        failed = sum(1 for f in summary["frames"] if f["error"])
+        print(f"sync ({reason}): " + (f"failed: {summary['error']}" if summary["error"]
+                                       else f"{len(summary['frames'])} frames, {failed} with errors"))
+    except sync.SyncBusy:
+        print(f"sync ({reason}) skipped: a sync is already running")
+    finally:
+        _sync_lock.release()
+
+
+def _sync_loop() -> None:
+    time.sleep(30)
+    while True:
+        try:
+            interval = config.load().sync_interval
+            if interval and time.time() - _last_sync >= interval:
+                _run_sync("scheduled")
+        except Exception as e:
+            print(f"sync loop: {type(e).__name__}: {e}")
+        time.sleep(60)
+
+
+@app.post("/sync")
+def sync_now():
+    if not _sync_lock.locked():
+        threading.Thread(target=_run_sync, args=("now",), daemon=True).start()
+        flash("Sync started.", "ok")
+    return redirect(url_for("index") + "#sync")
 
 
 @app.post("/login/start")
@@ -465,7 +533,8 @@ def slideshow_playlist(key: str):
     # Polled by the slideshow, so new photos and setting changes show up without a reload.
     cfg, frame = _web_frame(key)
     media = web_frame.list_media(registry.web_media_dir(cfg.data_dir, frame.id))
-    return {"display": frames.display_for(cfg, frame), "items": media}
+    taken = sync.taken(cfg, frame.id)
+    return {"display": frames.display_for(cfg, frame), "items": [{**m, "taken": taken.get(m["name"])} for m in media]}
 
 
 @app.get("/show/<key>/media/<name>")
@@ -506,5 +575,6 @@ def serve(host: str, port: int) -> None:
     from waitress import serve as waitress_serve
 
     app.secret_key = _secret_key()
+    threading.Thread(target=_sync_loop, daemon=True).start()
     print(f"reframe web UI on http://{host}:{port}")
     waitress_serve(app, host=host, port=port, threads=4)

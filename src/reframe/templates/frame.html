@@ -52,7 +52,7 @@
     <label for="display_interval">Seconds per photo</label>
     <input type="number" id="display_interval" name="display_interval" value="{{ frame.display.get('display_interval', '') }}"
            min="3" max="3600" placeholder="Default ({{ cfg.display.interval }})">
-    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order"), ("display_fill", "Space around photos")] %}
+    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order"), ("display_fill", "Space around photos"), ("display_date", "Date taken")] %}
     <label for="{{ key }}">{{ label }}</label>
     <select id="{{ key }}" name="{{ key }}">
       <option value="">Default ({{ display_choices[key][cfg[key]] }})</option>

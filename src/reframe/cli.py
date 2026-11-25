@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Optional
 
 import qrcode
+import requests
 
-from . import agent, config, frames, snapshots, sources
+from . import agent, config, frames, snapshots, sources, sync
 from .frames import kiosk, registry
-from .sources import get_source
+from .sources import get_source, share_link
 from .sources.google_ambient.api import AmbientClient
 from .sources.google_ambient.auth import TokenStore
 from .sources.google_ambient.login import LoginFlow
@@ -168,6 +169,7 @@ DISPLAY_FLAGS = {  # CLI flag -> display setting
     "orientation": "display_orientation",
     "shuffle": "display_shuffle",
     "fill": "display_fill",
+    "date": "display_date",
 }
 
 
@@ -343,6 +345,50 @@ def cmd_frame_put(cfg: config.Config, args: argparse.Namespace) -> None:
             adapter.close()
 
 
+def cmd_albums(cfg: config.Config, args: argparse.Namespace) -> None:
+    """Shared albums (the share_link source)."""
+    if cfg.source != "share_link":
+        sys.exit("Albums here are for the share_link source; this server uses " + cfg.source + ".")
+    try:
+        if args.action == "add":
+            a = share_link.add(cfg, args.url, args.name or "")
+            print(f"Added {a['name']} ({a['id']}). Frames that show every album get it at the next sync.")
+        elif args.action == "remove":
+            a = share_link.remove(cfg, args.album)
+            print(f"Removed {a['name']}. The next sync takes its photos off the frames.")
+        elif args.action == "rename":
+            share_link.rename(cfg, args.album, args.name)
+            print(f"Renamed {args.album} to {args.name.strip()}.")
+        else:
+            albums = share_link.saved_albums(cfg)
+            if not albums:
+                print("No albums yet; add one with `reframe albums add SHARE_LINK`.")
+            for a in albums:
+                print(f"{a['id']}  {a['name']}")
+    except (share_link.ShareLinkError, requests.RequestException) as e:
+        sys.exit(f"error: {e}")
+
+
+def cmd_sync(cfg: config.Config, args: argparse.Namespace) -> None:
+    try:
+        summary = sync.run(cfg, dry_run=args.dry_run, log=print)
+    except sync.SyncBusy as e:
+        sys.exit(f"error: {e}")
+    if summary["error"]:
+        sys.exit(f"error: {summary['error']}")
+    if args.dry_run:
+        print("\nDry run: nothing changed.")
+    for f in summary["frames"]:
+        print(f"== {f['frame']}" + (f": {f['error']}" if f["error"] else ""))
+        for a in f["albums"]:
+            parts = [f"+{a['added']}", f"-{a['removed']}", f"{a['kept']} kept"]
+            if a["waiting"]:
+                parts.append(f"{a['waiting']} missing, kept for now")
+            if a["failed"]:
+                parts.append(f"{a['failed']} failed")
+            print(f"   {a['album']}: {', '.join(parts)}" + (f" ({a['note']})" if a["note"] else ""))
+
+
 def _print_progress(step: str, pct: int) -> None:
     print(f"  [{pct:3d}%] {step}")
 
@@ -506,6 +552,22 @@ def main() -> None:
     p.add_argument("frame", help="frame name or id")
     p.add_argument("--new-key", action="store_true", help="replace the key (the old one stops working)")
     p.set_defaults(func=cmd_agent)
+
+    p = sub.add_parser("albums", help="shared albums: list, add a share link, rename or remove")
+    asub = p.add_subparsers(dest="action")
+    ap = asub.add_parser("add", help="add a shared album by its share link")
+    ap.add_argument("url", help="the album's share link, https://photos.app.goo.gl/…")
+    ap.add_argument("--name", help="name to show (default: the album's title)")
+    ap = asub.add_parser("rename", help="change the name reframe shows")
+    ap.add_argument("album", help="album id or name")
+    ap.add_argument("name")
+    ap = asub.add_parser("remove", help="stop syncing an album")
+    ap.add_argument("album", help="album id or name")
+    p.set_defaults(func=cmd_albums)
+
+    p = sub.add_parser("sync", help="sync the albums to the frames now")
+    p.add_argument("--dry-run", action="store_true", help="show what would change, change nothing")
+    p.set_defaults(func=cmd_sync)
 
     p = sub.add_parser("frame-check", help="connect to frames and print their details")
     p.add_argument("frame", nargs="?", help="frame name or id; default all")

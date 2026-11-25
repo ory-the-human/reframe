@@ -10,7 +10,7 @@ from .store import read_json, write_json
 # /data/settings.json and take precedence over the environment, which only
 # provides defaults. Frames have their own file (frames/registry.py).
 SETTINGS = {
-    "source": ("SOURCE", "google_ambient"),
+    "source": ("SOURCE", "share_link"),
     "client_id": ("GOOGLE_CLIENT_ID", ""),
     "client_secret": ("GOOGLE_CLIENT_SECRET", ""),
     "device_name": ("DEVICE_NAME", "reframe"),
@@ -25,14 +25,17 @@ SETTINGS = {
     "display_orientation": ("DISPLAY_ORIENTATION", "auto"),
     "display_shuffle": ("DISPLAY_SHUFFLE", "yes"),
     "display_fill": ("DISPLAY_FILL", "blur"),
+    "display_date": ("DISPLAY_DATE", "yes"),
     # Screen settings for kiosk frames, applied by the agent on the frame.
     "screen_schedule": ("SCREEN_SCHEDULE", "always"),
     "screen_dark": ("SCREEN_DARK", "yes"),
     "screen_dark_lux": ("SCREEN_DARK_LUX", "5"),
     "screen_dark_seconds": ("SCREEN_DARK_SECONDS", "30"),
+    # Minutes between syncs; 0 turns the automatic sync off.
+    "sync_minutes": ("SYNC_MINUTES", "60"),
 }
 
-DISPLAY_KEYS = ("display_interval", "display_layout", "display_orientation", "display_shuffle", "display_fill")
+DISPLAY_KEYS = ("display_interval", "display_layout", "display_orientation", "display_shuffle", "display_fill", "display_date")
 
 DISPLAY_CHOICES = {
     "display_layout": {"pair": "Two photos together when they fit better", "single": "One photo at a time"},
@@ -45,6 +48,7 @@ DISPLAY_CHOICES = {
     },
     "display_shuffle": {"yes": "Shuffle", "no": "In order"},
     "display_fill": {"blur": "A blurred copy of the photo", "black": "Black"},
+    "display_date": {"yes": "Show the date each photo was taken", "no": "Don't show it"},
 }
 
 
@@ -113,6 +117,7 @@ def display_values(raw: dict[str, str]) -> dict[str, object]:
         value = raw.get(key, "")
         values[key[len("display_"):]] = value if value in choices else next(iter(choices))
     values["shuffle"] = values["shuffle"] == "yes"
+    values["date"] = values["date"] == "yes"
     return values
 
 
@@ -129,10 +134,12 @@ class Config:
     display_orientation: str
     display_shuffle: str
     display_fill: str
+    display_date: str
     screen_schedule: str
     screen_dark: str
     screen_dark_lux: str
     screen_dark_seconds: str
+    sync_minutes: str
 
     @property
     def token_file(self) -> Path:
@@ -159,6 +166,14 @@ class Config:
     def screen(self) -> dict[str, object]:
         """Default screen settings for kiosk frames, validated."""
         return screen_values(self.screen_raw)
+
+    @property
+    def sync_interval(self) -> int:
+        """Seconds between automatic syncs; 0 for off."""
+        try:
+            return max(0, int(self.sync_minutes)) * 60
+        except ValueError:
+            return 3600
 
     @property
     def has_client(self) -> bool:

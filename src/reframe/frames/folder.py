@@ -23,7 +23,10 @@ class FolderFrame:
     def put(self, local: Path, name: str) -> str:
         self.directory.mkdir(parents=True, exist_ok=True)
         target = self.directory / name
-        shutil.copyfile(local, target)
+        # Copied under another name first, so a slideshow never sees half a file.
+        part = self.directory / f".{name}.part"
+        shutil.copyfile(local, part)
+        part.replace(target)
         return str(target)
 
     def remove(self, frame_path: str) -> None:

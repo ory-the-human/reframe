@@ -8,6 +8,36 @@
     <a class="muted" href="{{ url_for('settings') }}" style="margin-left:8px">change</a></p>
 </section>
 
+<section id="sync">
+  <h2>Sync <span class="muted" style="font-weight:400">{{ "every %s min"|format(cfg.sync_interval // 60) if cfg.sync_interval else "automatic sync off" }}</span>
+    {% if sync_running %}<span class="badge warn">running</span>{% endif %}</h2>
+  {% if sync_run %}
+    <p class="muted">Last run {{ clock(sync_run.finished) }} ({{ duration(now - sync_run.finished) }} ago)</p>
+    {% if sync_run.error %}<p class="error">Sync failed: {{ sync_run.error }}</p>{% endif %}
+    {% if sync_run.frames %}
+    <table>
+      {% for f in sync_run.frames %}
+        {% if f.error %}<tr><td>{{ f.frame }}</td><td class="error">{{ f.error }}</td></tr>{% endif %}
+        {% for a in f.albums %}
+        <tr><td>{{ f.frame }} / {{ a.album }}</td>
+          <td><span class="ok">+{{ a.added }}</span> <span class="error">−{{ a.removed }}</span>, {{ a.kept }} kept
+            {%- if a.waiting %}, <span class="warn">{{ a.waiting }} missing, kept for now</span>{% endif %}
+            {%- if a.failed %}, <span class="error">{{ a.failed }} failed</span>{% endif %}
+            {%- if a.note %} <span class="muted">({{ a.note }})</span>{% endif %}</td></tr>
+        {% endfor %}
+      {% endfor %}
+    </table>
+    {% endif %}
+  {% else %}
+    <p class="muted">No sync yet.</p>
+  {% endif %}
+  {% if sync_running %}
+    <script>setTimeout(() => location.reload(), 5000);</script>
+  {% else %}
+    <form method="post" action="{{ url_for('sync_now') }}" style="margin-top:8px"><button>Sync now</button></form>
+  {% endif %}
+</section>
+
 {% if cfg.source == "google_ambient" %}
 {# Google Photos Ambient: OAuth client and sign-in #}
 {% if not cfg.has_client %}
@@ -159,7 +189,7 @@
     {% set f = v.frame %}
     <div class="frame">
       <p><b>{{ f.name }}</b> <span class="muted">· {{ v.kind_label }}{% if f.kind != "web" %} · <code>{{ f.target }}</code>{% endif %}</span></p>
-      <p class="muted">Albums: {{ f.albums | map(attribute="name") | join(", ") if f.albums else "all" }}
+      <p class="muted">Albums: {{ f.albums | map(attribute="name") | join(", ") if f.albums else "all" }} · {{ counts.get(f.id, 0) }} photos
         {% if f.shows_slideshow %} · {{ v.display.interval }}s per photo, {{ v.display.layout }}, {{ v.display.orientation }}{% if f.display %} (own settings){% endif %}{% endif %}</p>
       {% if f.kind == "web" %}
         <div class="row" style="margin:8px 0">

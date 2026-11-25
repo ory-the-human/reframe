@@ -1,6 +1,33 @@
 {% extends "base.html" %}
 {% from "_screen.html" import screen_fields %}
 {% block content %}
+{% if albums is not none %}
+<section id="albums">
+  <h2>Albums</h2>
+  {% if albums %}
+  <table>
+    <tr><th>Name</th><th>Id</th><th></th></tr>
+    {% for a in albums %}
+    <tr><td>{{ a.name }}</td><td><code>{{ a.id }}</code></td>
+      <td><form class="inline" method="post" action="{{ url_for('album_remove', album_id=a.id) }}"
+                onsubmit='return confirm({{ ("Stop syncing " ~ a.name ~ "? The next sync takes its photos off the frames.") | tojson }})'>
+        <button class="danger">Remove</button></form></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No albums yet.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('album_add') }}">
+    <label for="url">Share link</label>
+    <input type="url" id="url" name="url" required placeholder="https://photos.app.goo.gl/…">
+    <label for="name">Name (optional, default the album's title)</label>
+    <input type="text" id="name" name="name">
+    <p class="muted">In Google Photos, open the album, then Share → Create link. Anyone with the link
+      can see the album; turning link sharing off revokes it.</p>
+    <p style="margin-top:12px"><button>Add album</button></p>
+  </form>
+</section>
+{% endif %}
 <section>
   <form method="post">
     <h2>Source</h2>
@@ -14,6 +41,8 @@
     <input type="url" id="public_url" name="public_url" value="{{ cfg.public_url }}" placeholder="http://192.168.1.10:1992">
     <p class="muted">Written into kiosk frames as their slideshow link. Leave blank to use the address
       you opened this page with (unless that's <code>localhost</code>).</p>
+    <label for="sync_minutes">Minutes between syncs, 0 for off</label>
+    <input type="number" id="sync_minutes" name="sync_minutes" value="{{ cfg.sync_minutes }}" min="0">
 
     <h2 style="margin-top:24px">Display</h2>
     <p class="muted">Defaults for frames that run the reframe slideshow (browser slideshow and kiosk frames).
@@ -21,7 +50,7 @@
     <label for="display_interval">Seconds per photo</label>
     <input type="number" id="display_interval" name="display_interval" value="{{ cfg.display.interval }}" min="3" max="3600">
 
-    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order"), ("display_fill", "Space around photos")] %}
+    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order"), ("display_fill", "Space around photos"), ("display_date", "Date taken")] %}
     <label for="{{ key }}">{{ label }}</label>
     <select id="{{ key }}" name="{{ key }}">
       {% for value, text in display_choices[key].items() %}<option value="{{ value }}" {{ "selected" if value == cfg[key] }}>{{ text }}</option>{% endfor %}

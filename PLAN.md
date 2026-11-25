@@ -138,6 +138,11 @@ Each run:
 6. **Deselected albums** (a source no longer in `mediaSources`) get the same
    treatment for all their items.
 
+**As built:** the frames list stays in `/data/frames.json`; the sync state is keyed
+by frame id, so moving it wasn't needed. Albums a frame stops showing are removed
+from it at once rather than after missed runs: that's the owner's choice, not an
+uncertain listing.
+
 ### Removal safeguards
 
 A wrong "removed" deletes photos from the frame. They come back on the next
