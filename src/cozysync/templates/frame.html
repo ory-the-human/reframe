@@ -98,11 +98,12 @@
     </script>
   {% elif frame.is_kiosk %}
     <p>This frame runs the cozysync slideshow in {{ frame.kiosk.app }}, which is its home screen.
-      The Cozyla app is turned off. cozysync manages it over adb.</p>
+      The Cozyla app is turned off. The cozysync agent on the frame runs its screen and reports its health.</p>
     <table>
       <tr><th>Slideshow</th><td><code>{{ frame.kiosk.start_url }}</code></td></tr>
       <tr><th>Settings password</th><td><details><summary>Show</summary><code>{{ frame.kiosk.password }}</code></details></td></tr>
       <tr><th>Kiosk app</th><td>{{ frame.kiosk.app }} {{ frame.kiosk.app_version }}</td></tr>
+      <tr><th>Agent</th><td>{{ frame.kiosk.agent_version or "not installed: use Update kiosk settings" }}</td></tr>
     </table>
     <p class="muted">To change the kiosk's own settings on the frame, tap the top-left quarter of the
       screen 10 times quickly, then enter the password.</p>
@@ -121,8 +122,8 @@
     </div>
   {% else %}
     <p>Replace the Cozyla app with the cozysync slideshow: cozysync installs Webview Kiosk (open source,
-      from F-Droid), makes it the frame's home screen with its settings locked by a password, and turns off the Cozyla app
-      (its photos, Talking Photo and phone uploads stop). It records how the frame was, so
+      from F-Droid), makes it the frame's home screen with its settings locked by a password, installs the cozysync agent
+      (screen schedule, dark-room sleep, health), and turns off the Cozyla app (its photos, Talking Photo and phone uploads stop). It records how the frame was, so
       "Restore the Cozyla app" puts it back.</p>
     <form method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}"
           onsubmit='return confirm({{ ("Set up " ~ frame.name ~ " as a cozysync kiosk? It takes about a minute.") | tojson }})'>

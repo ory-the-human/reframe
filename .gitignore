@@ -8,3 +8,4 @@ dist/
 
 # Owner-specific notes (addresses, serials, album names). Never commit.
 private/
+agent/build/

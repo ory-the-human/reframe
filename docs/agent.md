@@ -5,7 +5,20 @@ after itself. adb is only for setting the frame up and for recovery: the frames'
 adb hangs now and then until the frame is power-cycled.
 
 **Status:** the server side is done (settings, the two endpoints below, the health
-pages and CLI). The app isn't written yet.
+pages and CLI). The app (`agent/`) runs the screen schedule, dark-room sleep, the
+clock and health reports, and kiosk setup installs it. The watchdog is next.
+
+## Building and releasing
+
+`agent/build.sh` builds the APK without Gradle (JDK 17, Android SDK platform 34 and
+build-tools 34.0.0). `agent/release.sh` builds a release and prints the version,
+URL placeholder and checksum to pin in `src/cozysync/frames/kiosk.py`; the server
+downloads that release when it sets up a kiosk, like it does Webview Kiosk. Until a
+release is pinned, or to try a local build, set `AGENT_APK` to the APK's path.
+
+Sign every release with the same key (`private/agent.keystore`, git-ignored, or
+`$AGENT_KEYSTORE`): Android only installs an update signed like the installed app.
+Keep a backup of it.
 
 ## What it does
 
@@ -20,8 +33,11 @@ pages and CLI). The app isn't written yet.
 - **Health:** reports temperatures, CPU load, memory, storage, uptime and the
   screen's state once a minute.
 
-It starts at boot and runs as a foreground service. cozysync installs it with the
-kiosk and removes it when the frame is restored.
+It runs as a foreground service. The firmware drops `BOOT_COMPLETED` for apps it
+doesn't list, so the agent also starts when Wi-Fi connects (about 15 s after boot)
+and after it's updated. Kiosk setup installs it, adds it and the kiosk to the
+firmware's keep-alive list (below), sets the clock and starts it; restoring removes
+it and puts the list back.
 
 ## Talking to the server
 
@@ -101,8 +117,14 @@ counts as offline after 3 minutes without a report.
   it; the kiosk is back in front after waking. There's no backlight file in `/sys`.
   Brightness is Android's own setting (auto-brightness is on).
 - **Light sensor:** `pt3r850`, in lux, about one reading a second (122 lux in a lit
-  room). With the screen off, Android stops listening to it; whether it still
-  reports to an app that keeps listening is still to test with the agent.
+  room). Android stops listening to it when the screen is off, but it keeps
+  reporting to the agent (which holds a wake lock), so a lit room can wake the frame. It reads 0–200 lux, so all bright rooms look
+  the same. Tested: covered, the screen went off after `dark_seconds`; uncovered
+  (without touching), it came back about 3 seconds after the light did.
+- **Touch:** a tap wakes a screen that's fully off (Android's own wake). The agent
+  takes any wake it didn't cause as a touch and keeps the screen on for 5 minutes.
+- **Auto-brightness:** Android's adaptive brightness is on and dims the screen as
+  soon as the room darkens, before the agent turns it off.
 - **Temperatures:** `/sys/class/thermal/thermal_zone0` (`sunxi-therm`, the chip, in
   °C, 47–50 idle) and an ambient temperature sensor (`AW`).
 - **Load and memory:** 2 cores, 1 GB RAM. `/proc/meminfo` has no `MemAvailable`, so
@@ -112,3 +134,9 @@ counts as offline after 3 minutes without a report.
   setting it. The agent sets the clock from the server's time (the `Date` header of
   its replies), so schedules work without internet. The timezone
   (`persist.sys.timezone`) survives reboots.
+- **Background manager:** Allwinner's `BackgroundManagerService` force-stops any
+  app that isn't on its allow list about 2 minutes after the screen goes off, and
+  refuses to start a service for an app that hasn't opened an activity. Its list
+  of allowed apps is the system setting `kill_background_services_list`
+  (comma-separated, read live; the setting `kill_background_services` turns the
+  manager on, read at boot). Setup adds the agent and the kiosk to it.

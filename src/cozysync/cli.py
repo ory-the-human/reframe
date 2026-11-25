@@ -358,7 +358,7 @@ def cmd_kiosk(cfg: config.Config, args: argparse.Namespace) -> None:
         if not f.key:
             f.key = secrets.token_urlsafe(18)
         print(f"Setting up {f.name} as a kiosk (about a minute)...")
-        save(kiosk.provision(cfg, f.id, f.address, f"{base}/show/{f.key}", f.kiosk, save, _print_progress))
+        save(kiosk.provision(cfg, f.id, f.address, base, f.key, agent.ensure_key(cfg, f), f.kiosk, save, _print_progress))
         print(f"Done. The frame plays {f.kiosk['start_url']}")
     elif args.action == "restore":
         print(f"Restoring {f.name} to how it was...")

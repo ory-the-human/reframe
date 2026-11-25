@@ -374,7 +374,7 @@ _kiosk_jobs: dict[str, dict[str, Any]] = {}
 _kiosk_lock = threading.Lock()
 
 
-def _run_kiosk_job(cfg: config.Config, frame: registry.FrameConfig, deprovisioning: bool, url: str) -> None:
+def _run_kiosk_job(cfg: config.Config, frame: registry.FrameConfig, deprovisioning: bool, server: str) -> None:
     job = _kiosk_jobs[frame.id]
 
     def progress(step: str, pct: int) -> None:
@@ -390,7 +390,8 @@ def _run_kiosk_job(cfg: config.Config, frame: registry.FrameConfig, deprovisioni
             save({})
             job["result"] = f"{frame.name} is back to the Cozyla app."
         else:
-            save(kiosk.provision(cfg, frame.id, frame.address, url, frame.kiosk, save, progress))
+            agent_key = agent.ensure_key(cfg, frame)
+            save(kiosk.provision(cfg, frame.id, frame.address, server, frame.key, agent_key, frame.kiosk, save, progress))
             job["result"] = f"{frame.name} is now a cozysync kiosk."
     except Exception as e:
         job["error"] = f"{type(e).__name__}: {e}"
@@ -406,13 +407,13 @@ def _kiosk_action(frame_id: str, deprovisioning: bool):
         abort(404)
     if frame.kind != "cozyla_adb":
         abort(400)
-    url = ""
+    server = ""
     if not deprovisioning:
         if not frame.key:
             frame.key = secrets.token_urlsafe(18)
             registry.update(cfg, frame)
         try:
-            url = _public_base(cfg) + url_for("slideshow", key=frame.key)
+            server = _public_base(cfg)
         except frames.FrameError as e:
             flash(str(e), "error")
             return redirect(url_for("frame_edit", frame_id=frame.id))
@@ -425,7 +426,7 @@ def _kiosk_action(frame_id: str, deprovisioning: bool):
                 "pct": 0,
                 "done": False,
             }
-            threading.Thread(target=_run_kiosk_job, args=(cfg, frame, deprovisioning, url), daemon=True).start()
+            threading.Thread(target=_run_kiosk_job, args=(cfg, frame, deprovisioning, server), daemon=True).start()
     return redirect(url_for("frame_edit", frame_id=frame.id))
 
 

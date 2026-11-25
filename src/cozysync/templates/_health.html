@@ -39,6 +39,7 @@
   {{ spark(h, "temp", "Temperature", " °C") }}
   {{ spark(h, "load", "Load", "", "%.2f") }}
   {{ spark(h, "mem", "Memory", "%", "%.0f") }}
+  {{ spark(h, "lux", "Room light", " lux", "%.0f") }}
 </div>
 {% if h.fixes %}
 <p style="margin-top:10px"><b>Watchdog fixes</b></p>

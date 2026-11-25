@@ -106,8 +106,9 @@ server" (`PUBLIC_URL`), or the address you opened the web UI with.
 
 Kiosk frames also get a **Screen** section (a schedule and turning off in a dark
 room, with defaults in Settings) and a **Health** section (temperatures, load,
-memory, storage, uptime). Both come from the frame agent, a small app on the frame
-that's still being built; see [docs/agent.md](docs/agent.md).
+memory, storage, uptime). Both come from the cozysync agent, a small app that kiosk
+setup installs on the frame; see [docs/agent.md](docs/agent.md). Until an agent
+release is published, set `AGENT_APK` to a local build (`agent/build.sh`).
 
 `cozysync frame-put FRAME photo.jpg …` copies files to a frame by hand,
 which is handy for trying the slideshow before the sync engine exists.

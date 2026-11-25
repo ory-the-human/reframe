@@ -80,6 +80,7 @@ def _sample(report: dict[str, Any], at: float) -> dict[str, Any]:
         "load": _num(load[0]) if isinstance(load, list) and load else None,
         "mem": round(100 * (1 - available / total), 1) if total and available is not None else None,
         "on": (report.get("screen") or {}).get("on"),
+        "lux": _num((report.get("screen") or {}).get("lux")),
     }
 
 
