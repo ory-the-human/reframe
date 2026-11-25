@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from ..config import Config, display_values
+from ..config import Config, display_values, screen_values
 from ..store import read_json, write_json
 from .base import FrameError
 
@@ -34,11 +34,14 @@ class FrameConfig:
     # [{"id", "name"}]; empty means every album the source offers. Names are
     # kept for display so the dashboard needn't call the source.
     albums: list[dict[str, str]] = field(default_factory=list)
-    # Overrides of the display defaults, keyed like config.DISPLAY_KEYS.
+    # Overrides of the display and screen defaults, keyed like
+    # config.DISPLAY_KEYS and config.SCREEN_KEYS.
     display: dict[str, str] = field(default_factory=dict)
     # cozyla_adb provisioned as a kiosk (frames/kiosk.py): the kiosk settings
     # password, the original state to restore, etc. Empty when not provisioned.
     kiosk: dict[str, Any] = field(default_factory=dict)
+    # The secret the agent app on a kiosk frame uses to call this server (agent.py).
+    agent_key: str = ""
 
     @property
     def is_kiosk(self) -> bool:
@@ -134,6 +137,13 @@ def by_key(frames: list[FrameConfig], key: str) -> Optional[FrameConfig]:
     return None
 
 
+def by_agent_key(frames: list[FrameConfig], key: str) -> Optional[FrameConfig]:
+    for f in frames:
+        if f.agent_key and hmac.compare_digest(f.agent_key, key):
+            return f
+    return None
+
+
 def add(cfg: Config, name: str, kind: str, **fields: Any) -> FrameConfig:
     if kind not in KINDS:
         raise FrameError(f"unknown frame type {kind!r}; choose one of {', '.join(KINDS)}")
@@ -163,6 +173,7 @@ def remove(cfg: Config, frame_id: str) -> None:
     save_all(cfg, [f for f in frames if f.id != frame_id])
     # A web frame's photos are only copies for the slideshow.
     shutil.rmtree(web_media_dir(cfg.data_dir, frame_id), ignore_errors=True)
+    (cfg.data_dir / "agents" / f"{frame_id}.json").unlink(missing_ok=True)
 
 
 def validate(frame: FrameConfig) -> None:
@@ -177,3 +188,8 @@ def validate(frame: FrameConfig) -> None:
 def display_for(cfg: Config, frame: FrameConfig) -> dict[str, object]:
     """The frame's display settings: its overrides on top of the defaults."""
     return display_values({**cfg.display_raw, **{k: v for k, v in frame.display.items() if v}})
+
+
+def screen_for(cfg: Config, frame: FrameConfig) -> dict[str, object]:
+    """The frame's screen settings: its overrides on top of the defaults."""
+    return screen_values({**cfg.screen_raw, **{k: v for k, v in frame.display.items() if v}})

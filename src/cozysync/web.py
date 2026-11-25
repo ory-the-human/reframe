@@ -19,7 +19,7 @@ import qrcode.image.svg
 from flask import Flask, Response, abort, flash, redirect, render_template, request, send_from_directory, url_for
 from markupsafe import Markup
 
-from . import config, frames, snapshots, sources
+from . import agent, config, frames, snapshots, sources
 from .frames import kiosk, registry
 from .frames import web as web_frame
 from .sources.google_ambient.api import AmbientClient
@@ -47,8 +47,9 @@ def _secret_key() -> bytes:
 
 @app.before_request
 def _protect() -> Optional[Response]:
-    # Kiosks can't answer a password prompt; slideshow URLs carry their own secret.
-    if request.path.startswith("/show/"):
+    # Kiosks can't answer a password prompt; slideshow URLs carry their own
+    # secret, and frame agents send their key.
+    if request.path.startswith(("/show/", "/agent/")):
         return None
     password = os.environ.get("WEB_PASSWORD")
     if password:
@@ -69,7 +70,7 @@ def _qr_svg(data: str) -> Markup:
     return Markup(img.to_string(encoding="unicode"))
 
 
-app.jinja_env.globals["qr_svg"] = _qr_svg
+app.jinja_env.globals.update(qr_svg=_qr_svg, duration=agent.duration, clock=agent.clock, sparkline=agent.sparkline)
 
 
 def _guard(view):
@@ -122,6 +123,11 @@ def settings():
     if request.method == "POST":
         fields = ("source", "client_id", "device_name", "public_url", *config.DISPLAY_KEYS)
         updates = {k: request.form.get(k, "").strip() for k in fields}
+        try:
+            updates.update({k: "" for k in config.SCREEN_KEYS} | _screen_from_form())
+        except frames.FrameError as e:
+            flash(str(e), "error")
+            return redirect(url_for("settings"))
         # The secret is write-only: blank means keep the current one.
         if request.form.get("client_secret", "").strip():
             updates["client_secret"] = request.form["client_secret"].strip()
@@ -133,6 +139,7 @@ def settings():
         cfg=cfg,
         source_kinds=sources.KINDS,
         display_choices=config.DISPLAY_CHOICES,
+        screen_choices=config.SCREEN_CHOICES,
     )
 
 
@@ -217,6 +224,7 @@ def _frame_view(cfg: config.Config, frame: registry.FrameConfig) -> dict[str, An
         "display": frames.display_for(cfg, frame),
         "slideshow_url": url_for("slideshow", key=frame.key, _external=True) if frame.shows_slideshow else None,
         "check": _frame_checks.get(frame.id),
+        "health": agent.health(cfg, frame) if frame.agent_key else None,
     }
 
 
@@ -232,6 +240,25 @@ def _album_choices(cfg: config.Config, frame: Optional[registry.FrameConfig]) ->
     return offered + [a for a in saved if a["id"] not in known], None
 
 
+def _screen_from_form() -> dict[str, str]:
+    """Screen settings from a form; blank fields are left out (the default)."""
+    form = request.form
+    values = {}
+    mode = form.get("screen_schedule_mode", "")
+    if mode == "always":
+        values["screen_schedule"] = "always"
+    elif mode == "off":
+        values["screen_schedule"] = f"{form.get('screen_off_at', '')}-{form.get('screen_on_at', '')}"
+    for key in config.SCREEN_KEYS[1:]:
+        if form.get(key, "").strip():
+            values[key] = form[key].strip()
+    for key, value in values.items():
+        error = config.check_screen(key, value)
+        if error:
+            raise frames.FrameError(error)
+    return values
+
+
 def _frame_from_form(frame: registry.FrameConfig) -> registry.FrameConfig:
     form = request.form
     frame.name = form.get("name", "").strip()
@@ -239,6 +266,8 @@ def _frame_from_form(frame: registry.FrameConfig) -> registry.FrameConfig:
     frame.folder = form.get("folder", "").strip()
     frame.albums = [{"id": a, "name": form.get(f"album_name_{a}", a)} for a in form.getlist("album")]
     frame.display = {k: form.get(k, "").strip() for k in config.DISPLAY_KEYS if form.get(k, "").strip()}
+    if frame.is_kiosk:
+        frame.display.update(_screen_from_form())
     return frame
 
 
@@ -259,6 +288,9 @@ def _frame_form(cfg: config.Config, frame: registry.FrameConfig, is_new: bool):
         albums=albums,
         albums_error=albums_error,
         display_choices=config.DISPLAY_CHOICES,
+        screen_choices=config.SCREEN_CHOICES,
+        screen=frames.screen_for(cfg, frame),
+        health=agent.health(cfg, frame) if frame.agent_key else None,
     )
 
 
@@ -268,8 +300,8 @@ def frame_new():
     kind = request.values.get("kind", "web")
     frame = registry.FrameConfig(id="", name="", kind=kind if kind in registry.KINDS else "web")
     if request.method == "POST":
-        _frame_from_form(frame)
         try:
+            _frame_from_form(frame)
             fields = {k: getattr(frame, k) for k in ("address", "folder", "albums", "display")}
             added = registry.add(cfg, frame.name, frame.kind, **fields)
         except frames.FrameError as e:
@@ -288,8 +320,8 @@ def frame_edit(frame_id: str):
     except frames.FrameError:
         abort(404)
     if request.method == "POST":
-        _frame_from_form(frame)
         try:
+            _frame_from_form(frame)
             registry.update(cfg, frame)
         except frames.FrameError as e:
             flash(str(e), "error")
@@ -438,6 +470,34 @@ def slideshow_playlist(key: str):
 def slideshow_media(key: str, name: str):
     cfg, frame = _web_frame(key)
     return send_from_directory(registry.web_media_dir(cfg.data_dir, frame.id), name, max_age=86400)
+
+
+def _agent_frame() -> tuple[config.Config, registry.FrameConfig]:
+    cfg = config.load()
+    scheme, _, key = request.headers.get("Authorization", "").partition(" ")
+    frame = registry.by_agent_key(frames.load_all(cfg), key) if scheme.lower() == "bearer" and key else None
+    if frame is None:
+        abort(401)
+    return cfg, frame
+
+
+@app.get("/agent/v1/config")
+def agent_config():
+    cfg, frame = _agent_frame()
+    return agent.agent_config(cfg, frame)
+
+
+@app.post("/agent/v1/report")
+def agent_report():
+    cfg, frame = _agent_frame()
+    if (request.content_length or 0) > agent.MAX_REPORT_BYTES:
+        abort(413)
+    report = request.get_json(silent=True)
+    if not isinstance(report, dict):
+        abort(400)
+    agent.save_report(cfg, frame, report)
+    # The agent fetches its config again when this changes.
+    return {"ok": True, "config_version": agent.agent_config(cfg, frame)["version"]}
 
 
 def serve(host: str, port: int) -> None:

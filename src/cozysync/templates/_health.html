@@ -1,0 +1,48 @@
+{# What a frame's agent last reported. `h` comes from agent.health(). #}
+{% macro health_line(h) %}
+{% if not h %}<span class="muted">Agent: no report yet</span>
+{% else %}
+<span class="{{ 'ok' if h.online else 'warn' }}">Agent: {{ "online" if h.online else "last heard " ~ duration(h.age) ~ " ago" }}</span>
+<span class="muted">{% if h.temp is not none %} · {{ "%.0f"|format(h.temp) }} °C{% endif %}{% if h.load %} · load {{ "%.2f"|format(h.load[0]) }}{% endif %}{% if h.mem_pct is not none %} · memory {{ "%.0f"|format(h.mem_pct) }}%{% endif %}{% if h.screen %} · screen {{ "on" if h.screen.on else "off" }}{% endif %}</span>
+{% endif %}
+{% endmacro %}
+
+{% macro spark(h, key, label, unit, fmt="%.1f") %}
+{% set points = sparkline(h.history, key) %}
+{% if points %}
+{% set values = h.history | map(attribute=key) | reject("none") | list %}
+<div>
+  <p class="muted" style="margin:0">{{ label }}: {{ fmt|format(values|min) }}–{{ fmt|format(values|max) }}{{ unit }}
+    over {{ duration(h.history[-1].t - h.history[0].t) }}</p>
+  <svg class="spark" width="240" height="36" viewBox="0 0 240 36" role="img" aria-label="{{ label }} history"><polyline points="{{ points }}"/></svg>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro health_details(h) %}
+{% if not h %}
+<p class="muted">The agent on the frame hasn't reported yet.</p>
+{% else %}
+<p>{{ health_line(h) }}</p>
+<table>
+  {% if h.temperatures %}<tr><th>Temperatures</th><td>{% for name, t in h.temperatures.items() %}{{ name }} {{ "%.1f"|format(t) }} °C{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>{% endif %}
+  {% if h.load %}<tr><th>CPU load</th><td>{{ h.load | map("round", 2) | join(" / ") }} (1, 5, 15 min){% if h.cpus %}, {{ h.cpus }} cores{% endif %}</td></tr>{% endif %}
+  {% if h.mem_pct is not none %}<tr><th>Memory</th><td>{{ "%.0f"|format(h.mem_pct) }}% used of {{ "%.0f"|format(h.mem_total_mb) }} MB</td></tr>{% endif %}
+  {% if h.storage_total_mb %}<tr><th>Storage</th><td>{{ "%.0f"|format(h.storage_free_mb) }} MB free of {{ "%.0f"|format(h.storage_total_mb) }} MB</td></tr>{% endif %}
+  {% if h.uptime is not none %}<tr><th>Up for</th><td>{{ duration(h.uptime) }}</td></tr>{% endif %}
+  {% if h.screen %}<tr><th>Screen</th><td>{{ "on" if h.screen.on else "off" }}{% if h.screen.why and h.screen.why not in ("on", "off") %} ({{ h.screen.why }}){% endif %}{% if h.screen.lux is not none %} · room {{ h.screen.lux }} lux{% endif %}{% if h.screen.brightness is not none %} · brightness {{ h.screen.brightness }}{% endif %}</td></tr>{% endif %}
+  {% if h.foreground %}<tr><th>On screen</th><td><code>{{ h.foreground }}</code></td></tr>{% endif %}
+  {% if h.time %}<tr><th>Frame's clock</th><td>{{ h.time }}{% if h.timezone %} ({{ h.timezone }}){% endif %}</td></tr>{% endif %}
+  <tr><th>Agent</th><td>{{ h.agent_version or "?" }}{% if not h.config_current %} <span class="warn">· hasn't picked up the latest settings yet</span>{% endif %}</td></tr>
+</table>
+<div class="row" style="margin-top:10px">
+  {{ spark(h, "temp", "Temperature", " °C") }}
+  {{ spark(h, "load", "Load", "", "%.2f") }}
+  {{ spark(h, "mem", "Memory", "%", "%.0f") }}
+</div>
+{% if h.fixes %}
+<p style="margin-top:10px"><b>Watchdog fixes</b></p>
+<ul class="ids">{% for f in h.fixes %}<li>{{ clock(f.at) }} · {{ f.what }}</li>{% endfor %}</ul>
+{% endif %}
+{% endif %}
+{% endmacro %}

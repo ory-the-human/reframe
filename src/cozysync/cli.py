@@ -11,7 +11,7 @@ from typing import Optional
 
 import qrcode
 
-from . import config, frames, snapshots, sources
+from . import agent, config, frames, snapshots, sources
 from .frames import kiosk, registry
 from .sources import get_source
 from .sources.google_ambient.api import AmbientClient
@@ -171,6 +171,20 @@ DISPLAY_FLAGS = {  # CLI flag -> display setting
 }
 
 
+SCREEN_FLAGS = {  # CLI flag -> screen setting
+    "schedule": "screen_schedule",
+    "dark": "screen_dark",
+    "dark_lux": "screen_dark_lux",
+    "dark_seconds": "screen_dark_seconds",
+}
+
+
+def _check_screen(key: str, value: str) -> None:
+    error = config.check_screen(key, value)
+    if error:
+        sys.exit(error)
+
+
 def _check_display(key: str, value: str) -> None:
     """Reject display values the slideshow wouldn't understand ("" means the default)."""
     if not value:
@@ -193,11 +207,14 @@ def _edit_frame(cfg: config.Config, f: registry.FrameConfig, args: argparse.Name
     elif args.album:
         known = {a["id"]: a["name"] for a in f.albums}
         f.albums = [{"id": a, "name": known.get(a, a)} for a in args.album]
-    for flag, key in DISPLAY_FLAGS.items():
+    screen = {flag: key for flag, key in SCREEN_FLAGS.items() if getattr(args, flag) is not None}
+    if screen and not f.is_kiosk:
+        sys.exit("Screen settings are for kiosk frames; set one up with `cozysync kiosk setup`.")
+    for flag, key in {**DISPLAY_FLAGS, **screen}.items():
         value = getattr(args, flag)
         if value is None:
             continue
-        _check_display(key, value)
+        (_check_screen if key in config.SCREEN_KEYS else _check_display)(key, value)
         if value:
             f.display[key] = value
         else:
@@ -227,10 +244,74 @@ def _show_frame(cfg: config.Config, f: registry.FrameConfig) -> None:
             print(f"{flag:>12}: {('yes' if value else 'no') if isinstance(value, bool) else value}{own}")
         print(f"{'slideshow':>12}: {_slideshow_link(cfg, f)}")
     if f.is_kiosk:
+        screen = frames.screen_for(cfg, f)
+        schedule = screen["schedule"]
+        own = {flag: " (this frame)" if f.display.get(key) else "" for flag, key in SCREEN_FLAGS.items()}
+        print(f"{'schedule':>12}: {'off ' + schedule['off'] + ' to ' + schedule['on'] if schedule else 'always on'}{own['schedule']}")
+        dark = f"off below {screen['dark_lux']} lux for {screen['dark_seconds']} s" if screen["dark"] else "ignored"
+        print(f"{'room light':>12}: {dark}{own['dark'] or own['dark_lux'] or own['dark_seconds']}")
         print(f"{'kiosk':>12}: {f.kiosk.get('app')} {f.kiosk.get('app_version')}, plays {f.kiosk.get('start_url')}")
         print(f"{'':>12}  password: `cozysync kiosk show {shlex.quote(f.name)}`")
     elif f.kiosk:
         print(f"{'kiosk':>12}: setup didn't finish; run `cozysync kiosk setup` or `restore`")
+    if f.agent_key:
+        print(f"{'agent':>12}: {_health_line(agent.health(cfg, f))}")
+
+
+def _health_line(h: Optional[dict]) -> str:
+    if not h:
+        return "no report yet"
+    parts = ["online" if h["online"] else f"last heard {agent.duration(h['age'])} ago"]
+    if h["temp"] is not None:
+        parts.append(f"{h['temp']:.0f} °C")
+    if h["load"]:
+        parts.append(f"load {h['load'][0]:.2f}")
+    if h["mem_pct"] is not None:
+        parts.append(f"memory {h['mem_pct']:.0f}%")
+    if h["screen"]:
+        parts.append("screen " + ("on" if h["screen"].get("on") else "off"))
+    return ", ".join(parts)
+
+
+def cmd_health(cfg: config.Config, args: argparse.Namespace) -> None:
+    """What each frame's agent last reported."""
+    shown = [f for f in _selected(cfg, args.frame) if f.agent_key]
+    if not shown:
+        sys.exit("No frame has an agent yet.")
+    for f in shown:
+        h = agent.health(cfg, f)
+        print(f"\n== {f.name} ({f.id}): {_health_line(h)}")
+        if not h:
+            continue
+        rows = {
+            "temps": ", ".join(f"{k} {v:.1f} °C" for k, v in h["temperatures"].items()),
+            "load": " / ".join(f"{x:.2f}" for x in h["load"] or []) + (f" ({h['cpus']} cores)" if h["cpus"] else ""),
+            "memory": f"{h['mem_pct']:.0f}% of {h['mem_total_mb']:.0f} MB" if h["mem_pct"] is not None else "",
+            "storage": f"{h['storage_free_mb']:.0f} MB free of {h['storage_total_mb']:.0f} MB" if h["storage_total_mb"] else "",
+            "uptime": agent.duration(h["uptime"]) if h["uptime"] is not None else "",
+            "screen": json.dumps(h["screen"]) if h["screen"] else "",
+            "on screen": h["foreground"] or "",
+            "clock": f"{h['time']} ({h['timezone']})" if h["time"] else "",
+            "agent": (h["agent_version"] or "?") + ("" if h["config_current"] else ", hasn't picked up the latest settings"),
+        }
+        for key, value in rows.items():
+            if value:
+                print(f"{key:>10}: {value}")
+        for fix in h["fixes"]:
+            print(f"{'fixed':>10}: {agent.clock(fix['at'])} {fix['what']}")
+
+
+def cmd_agent(cfg: config.Config, args: argparse.Namespace) -> None:
+    """The agent's key and what the server sends it, for setting up or testing an agent by hand."""
+    f = registry.find(frames.load_all(cfg), args.frame)
+    if args.new_key:
+        f.agent_key = ""
+    key = agent.ensure_key(cfg, f)
+    base = cfg.public_url.rstrip("/") or "http://<this server>"
+    print(f"Config: {base}/agent/v1/config")
+    print(f"Report: {base}/agent/v1/report")
+    print(f"Key:    {key}  (send as 'Authorization: Bearer <key>')")
+    print(json.dumps(agent.agent_config(cfg, f), indent=2))
 
 
 def _selected(cfg: config.Config, ref: Optional[str]) -> list[registry.FrameConfig]:
@@ -304,6 +385,8 @@ def cmd_settings(cfg: config.Config, args: argparse.Namespace) -> None:
         value = args.value if args.action == "set" else ""
         if key in config.DISPLAY_KEYS:
             _check_display(key, value)
+        elif key in config.SCREEN_KEYS:
+            _check_screen(key, value)
         elif key == "source" and value and value not in sources.KINDS:
             sys.exit(f"source: choose one of {', '.join(sources.KINDS)}.")
         config.save_settings({key: value})
@@ -385,6 +468,10 @@ def main() -> None:
     for flag, key in DISPLAY_FLAGS.items():
         if flag != "interval":
             fp.add_argument(f"--{flag}", metavar="|".join(config.DISPLAY_CHOICES[key]))
+    fp.add_argument("--schedule", metavar="always|HH:MM-HH:MM", help="kiosk: hours the screen is off, e.g. 23:00-07:00")
+    fp.add_argument("--dark", metavar="yes|no", help="kiosk: turn the screen off when the room is dark")
+    fp.add_argument("--dark-lux", metavar="LUX", help="kiosk: below this the room counts as dark")
+    fp.add_argument("--dark-seconds", metavar="SECONDS", help="kiosk: how long it must be dark first")
     p.set_defaults(func=cmd_frames)
 
     p = sub.add_parser("settings", help="list settings, or set or clear one (same as the web UI's Settings)")
@@ -405,6 +492,15 @@ def main() -> None:
     p.add_argument("frame", help="frame name or id")
     p.add_argument("--url", help="setup: this server's address as frames see it, e.g. http://192.168.1.10:1992")
     p.set_defaults(func=cmd_kiosk)
+
+    p = sub.add_parser("health", help="what the agents on kiosk frames last reported")
+    p.add_argument("frame", nargs="?", help="frame name or id; default all")
+    p.set_defaults(func=cmd_health)
+
+    p = sub.add_parser("agent", help="a frame's agent key and config, for testing an agent")
+    p.add_argument("frame", help="frame name or id")
+    p.add_argument("--new-key", action="store_true", help="replace the key (the old one stops working)")
+    p.set_defaults(func=cmd_agent)
 
     p = sub.add_parser("frame-check", help="connect to frames and print their details")
     p.add_argument("frame", nargs="?", help="frame name or id; default all")

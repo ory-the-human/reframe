@@ -16,7 +16,8 @@ scheduled), **idea** (worth recording, undecided).
 | Show synced photos in the Cozyla app | idea | Works only with the frame kept offline ([cozyla-frame.md](cozyla-frame.md)); the kiosk below replaced it. |
 | Cozyla frames as kiosks | done | One-click setup and exact restore from the frame's page ([decisions.md](decisions.md), entry 7). |
 | Store kiosk photos on the frame | next | Push the slideshow page and files to the frame, so it keeps playing with the server off. |
-| Screen schedule and light-sensor sleep for kiosks | next | cozysync drives them over adb; the kiosk app has no light sensor support. |
+| On-frame agent | now | Our own small Android app on the frame, so it manages itself and adb is only for setup and recovery (the frames' adb hangs and needs a power cycle). It calls the server, never the other way round: fetches its settings, reports back, and keeps working with the server off. Jobs: screen schedule and light-sensor sleep; a watchdog that keeps the kiosk in front, the Cozyla app off and the kiosk's settings as written, and restarts adb when it hangs; health reports. cozysync installs it with the kiosk and removes it on restore. Server side done; the app is next ([agent.md](agent.md)). |
+| Frame health in the admin app | now | Temperatures, CPU load, memory, storage, uptime and the watchdog's last fixes per frame, on its page, the dashboard and `cozysync health`. Pages done; needs the agent to report. |
 | Video conversion in the sync engine | next | H.264 8-bit, sides a multiple of 32, sized per frame ([cozyla-frame.md](cozyla-frame.md#video-on-the-frame-tested-2026-11-24)). |
 | Kiosk over MQTT | idea | Webview Kiosk speaks MQTT (with Home Assistant discovery); connect it when a broker is configured. |
 | Unattended loop, health, alerts | next | PLAN.md phase 4. |

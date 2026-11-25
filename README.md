@@ -104,6 +104,11 @@ photos while it's off. A frame set up as a kiosk can't be removed from cozysync
 until it's restored. The link uses Settings → "Address frames use to reach this
 server" (`PUBLIC_URL`), or the address you opened the web UI with.
 
+Kiosk frames also get a **Screen** section (a schedule and turning off in a dark
+room, with defaults in Settings) and a **Health** section (temperatures, load,
+memory, storage, uptime). Both come from the frame agent, a small app on the frame
+that's still being built; see [docs/agent.md](docs/agent.md).
+
 `cozysync frame-put FRAME photo.jpg …` copies files to a frame by hand,
 which is handy for trying the slideshow before the sync engine exists.
 
@@ -132,6 +137,8 @@ docker compose run --rm cozysync frame-put Kitchen /data/samples/*.jpg
 docker compose run --rm cozysync kiosk setup "Living room" --url http://192.168.1.10:1992
 docker compose run --rm cozysync kiosk show "Living room"       # settings password
 docker compose run --rm cozysync kiosk restore "Living room"    # back to the Cozyla app
+docker compose run --rm cozysync frames edit "Living room" --schedule 23:00-07:00 --dark yes
+docker compose run --rm cozysync health                          # what the frame agents report
 ```
 
 Running locally without Docker (Python 3.9+):

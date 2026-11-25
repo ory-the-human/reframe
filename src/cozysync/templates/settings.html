@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_screen.html" import screen_fields %}
 {% block content %}
 <section>
   <form method="post">
@@ -28,6 +29,11 @@
     {% endfor %}
     <p class="muted">"Follow the screen" uses the orientation the browser reports. Pick one when a
       screen is mounted sideways but the browser doesn't rotate; the slideshow then rotates itself.</p>
+
+    <h2 style="margin-top:24px">Screen</h2>
+    <p class="muted">Defaults for kiosk frames, applied by the agent app on each frame. Each frame can
+      override them on its own page.</p>
+    {{ screen_fields(cfg.screen_raw, screen_choices) }}
 
     <h2 style="margin-top:24px">Google Photos (Ambient API)</h2>
     <p class="muted">Create an OAuth client in the Google Cloud console under Credentials → OAuth client ID,

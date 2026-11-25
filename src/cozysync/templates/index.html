@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_health.html" import health_line %}
 {% block content %}
 
 <section>
@@ -167,6 +168,7 @@
         </div>
       {% elif f.is_kiosk %}
         <p class="muted">Kiosk: plays the cozysync slideshow (settings password on the frame's page)</p>
+        <p>{{ health_line(v.health) }}</p>
       {% elif f.kind == "cozyla_adb" %}
         <p class="muted">The first connection shows an "Allow USB debugging?" prompt on the frame. Tick "Always allow", then check again.</p>
       {% endif %}

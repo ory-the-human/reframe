@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_screen.html" import screen_fields %}
+{% from "_health.html" import health_details %}
 {% block content %}
 <section>
   <h2>{{ "Add a frame" if is_new else frame.name }}</h2>
@@ -57,6 +59,13 @@
       {% for value, text in display_choices[key].items() %}<option value="{{ value }}" {{ "selected" if frame.display.get(key) == value }}>{{ text }}</option>{% endfor %}
     </select>
     {% endfor %}
+    {% endif %}
+
+    {% if frame.is_kiosk %}
+    <h2 style="margin-top:24px">Screen</h2>
+    <p class="muted">The agent app on the frame applies these itself, also while this server is off.
+      Leave a setting on "Default" to use the one in <a href="{{ url_for('settings') }}">settings</a>.</p>
+    {{ screen_fields(frame.display, screen_choices, cfg) }}
     {% endif %}
 
     <p style="margin-top:18px"><button type="submit">{{ "Add frame" if is_new else "Save" }}</button>
@@ -120,6 +129,11 @@
       <button>Set up as a cozysync kiosk</button>
     </form>
   {% endif %}
+  {% endif %}
+
+  {% if frame.is_kiosk %}
+  <h2 style="margin-top:28px">Health</h2>
+  {{ health_details(health) }}
   {% endif %}
 
   {% if not is_new %}

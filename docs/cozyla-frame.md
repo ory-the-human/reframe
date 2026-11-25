@@ -59,7 +59,9 @@ frame by serial so a changed address is found again automatically.
    in a browser on the frame (such as the `web` slideshow) runs on that stack.
 3. **The Wi-Fi password is readable.** `/data/misc/wifi/wpa_supplicant.conf`
    holds it in plain text, and root can read it.
-4. **A place for an attacker to stay.** An always-on, never-updated root device is
+4. **Any app can become root.** `/system/xbin/su` gives root to app user ids
+   too, not only to adb, so any installed app can take over the frame.
+5. **A place for an attacker to stay.** An always-on, never-updated root device is
    a good place for malware from another device to persist.
 
 Fixing this on the frame (turning on adb auth) means changing `/default.prop`
