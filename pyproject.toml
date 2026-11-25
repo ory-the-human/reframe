@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cozysync"
+name = "reframe"
 version = "0.1.0"
 description = "Self-hosted worker that syncs photo albums to photo frames, with pluggable sources and frames"
 readme = "README.md"
@@ -16,10 +16,10 @@ dependencies = [
 ]
 
 [project.scripts]
-cozysync = "cozysync.cli:main"
+reframe = "reframe.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-cozysync = ["templates/*.html"]
+reframe = ["templates/*.html"]

@@ -42,7 +42,7 @@ class AmbientSource:
     def _device_id(self) -> str:
         saved = read_json(self.cfg.device_file)
         if saved is None:
-            raise AuthError("no Ambient device yet; run `cozysync login` first")
+            raise AuthError("no Ambient device yet; run `reframe login` first")
         return saved["id"]
 
     def albums(self) -> list[Album]:

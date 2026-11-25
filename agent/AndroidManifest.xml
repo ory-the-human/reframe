@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="app.cozysync.agent"
+    package="app.reframe.agent"
     android:versionCode="1"
     android:versionName="0.1.0">
 
@@ -10,12 +10,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <application android:label="cozysync agent" android:allowBackup="false">
-        <service android:name="app.cozysync.agent.AgentService" android:exported="false" />
-        <activity android:name="app.cozysync.agent.StartActivity" android:exported="false"
+    <application android:label="reframe agent" android:allowBackup="false">
+        <service android:name="app.reframe.agent.AgentService" android:exported="false" />
+        <activity android:name="app.reframe.agent.StartActivity" android:exported="false"
             android:theme="@android:style/Theme.NoDisplay" android:excludeFromRecents="true"
             android:noHistory="true" />
-        <receiver android:name="app.cozysync.agent.BootReceiver">
+        <receiver android:name="app.reframe.agent.BootReceiver">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

@@ -18,5 +18,5 @@ ENV DATA_DIR=/data \
 VOLUME /data
 EXPOSE 1992
 
-ENTRYPOINT ["cozysync"]
+ENTRYPOINT ["reframe"]
 CMD ["web"]

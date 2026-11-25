@@ -1,4 +1,4 @@
-package app.cozysync.agent;
+package app.reframe.agent;
 
 import android.app.Activity;
 import android.content.Intent;

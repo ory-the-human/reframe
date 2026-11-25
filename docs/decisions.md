@@ -47,7 +47,7 @@ wait on approval for the owner's own frame.
 
 ## 3. Build an open-source, self-hosted worker with a hosted auth broker (2026-11-23)
 
-**Decision.** Turn cozysync into a free, open-source product:
+**Decision.** Turn reframe into a free, open-source product:
 
 - A **self-hosted worker** that each user runs at home (NAS, Raspberry Pi,
   laptop). It lists their albums, streams photos to their frames, and keeps only
@@ -97,7 +97,7 @@ none of the work is lost if the partner program says yes or no.
 **Decision.** A worker manages a list of frames, not one. Each frame has a name,
 a type and target (adb address, folder, or its own slideshow link), the albums it
 shows (none ticked means all), and display settings that override the defaults.
-Frames live in `/data/frames.json`, managed from the dashboard or `cozysync frames`.
+Frames live in `/data/frames.json`, managed from the dashboard or `reframe frames`.
 
 **Why.** Households have more than one screen (the owner already does), and
 running a worker per frame would mean one sign-in and one container per screen.
@@ -111,7 +111,7 @@ running a worker per frame would mean one sign-in and one container per screen.
   overrides, then the screen's URL parameters.
 - With the Google Ambient source, the worker registers **one** Ambient device
   per Google account, whatever the number of frames. The user picks albums for
-  it once in Google Photos, and cozysync assigns them to frames. Albums are
+  it once in Google Photos, and reframe assigns them to frames. Albums are
   listed per album and once per run however many frames show them, so quota
   grows with album size, not frame count. Separate devices per frame would only
   move album choice into Google Photos, split it across two apps, and multiply
@@ -122,9 +122,9 @@ running a worker per frame would mean one sign-in and one container per screen.
 
 ## 6. Home Assistant is an add-on, never a requirement (2026-11-24)
 
-**Decision.** A frame works with cozysync alone. cozysync runs and controls it:
+**Decision.** A frame works with reframe alone. reframe runs and controls it:
 photos, the slideshow, display settings, and screen on/off and brightness where
-the frame allows it. Home Assistant, when present, is an extra way in: cozysync as
+the frame allows it. Home Assistant, when present, is an extra way in: reframe as
 an HA add-on, its status and controls as HA entities, optionally HA automations
 driving the screen or an HA dashboard as a second page on the frame.
 
@@ -134,14 +134,14 @@ goes blank when HA is down or missing isn't a photo frame.
 **Consequences.**
 
 - Nothing on the frame may depend on HA being installed or reachable. Features
-  that HA offers (schedules, brightness) need a cozysync path too.
+  that HA offers (schedules, brightness) need a reframe path too.
 - The HA items in [roadmap.md](roadmap.md#home-assistant) are packaging and
   integration, not prerequisites.
 
 
 ## 7. Cozyla frames run the slideshow in an open-source kiosk app (2026-11-24)
 
-**Decision.** cozysync provisions a Cozyla frame as a kiosk: it installs
+**Decision.** reframe provisions a Cozyla frame as a kiosk: it installs
 [Webview Kiosk](https://f-droid.org/en/packages/uk.nktnet.webviewkiosk/)
 (AGPL-3.0, F-Droid, pinned version and checksum), writes its settings over adb
 (slideshow link, no toolbars, settings locked by a generated password), and turns
@@ -158,9 +158,23 @@ archived. Webview Kiosk runs on Android 5+, is maintained, and has MQTT for late
 
 **Consequences.**
 
-- cozysync, not the kiosk app, manages the frame (over root adb), so schedules,
-  light-sensor sleep and updates are cozysync features.
+- reframe, not the kiosk app, manages the frame (over root adb), so schedules,
+  light-sensor sleep and updates are reframe features.
 - The Cozyla app's features (Talking Photo, phone uploads, its sleep schedule)
   stop on a kiosk frame until it's restored.
 - Android saves an app being turned on or off about 10 seconds later; provisioning
   waits for that, or a reboot would bring the Cozyla app back.
+
+## 8. The project is called reframe (2026-11-25)
+
+**Decision.** The project, its Python package and command, the Docker image and the
+frame agent (`app.reframe.agent`) are called reframe, replacing the working name
+cozysync.
+
+**Why.** It goes public soon and isn't Cozyla-only. The name says what it does:
+it gives frames you bought a new picture and a new owner. It's short to type.
+
+**Consequences.**
+
+- The agent's package id changed before its first release, so no installed
+  agent needs migrating.

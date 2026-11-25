@@ -13,11 +13,11 @@ SETTINGS = {
     "source": ("SOURCE", "google_ambient"),
     "client_id": ("GOOGLE_CLIENT_ID", ""),
     "client_secret": ("GOOGLE_CLIENT_SECRET", ""),
-    "device_name": ("DEVICE_NAME", "cozysync"),
+    "device_name": ("DEVICE_NAME", "reframe"),
     # How frames reach this server, e.g. http://192.168.1.10:1992, for the
     # slideshow link written into kiosk frames.
     "public_url": ("PUBLIC_URL", ""),
-    # Default display settings for frames that run the cozysync slideshow.
+    # Default display settings for frames that run the reframe slideshow.
     # Each frame can override them, and each screen can override them again
     # in its slideshow URL.
     "display_interval": ("DISPLAY_INTERVAL", "15"),

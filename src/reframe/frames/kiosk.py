@@ -1,8 +1,8 @@
-"""Turn a rooted Android frame (Cozyla) into a cozysync kiosk, and back.
+"""Turn a rooted Android frame (Cozyla) into a reframe kiosk, and back.
 
 Provisioning installs Webview Kiosk (open source, AGPL-3.0, from F-Droid), points
 it at the frame's slideshow, locks its settings with a generated password, makes
-it the home screen and disables the Cozyla app. It also installs the cozysync
+it the home screen and disables the Cozyla app. It also installs the reframe
 agent (docs/agent.md), which manages the frame from then on. What the frame looked
 like before is recorded, so deprovisioning puts it back exactly.
 """
@@ -33,7 +33,7 @@ KIOSK_PREFS = f"{KIOSK_PREFS_DIR}/user_settings.xml"
 
 COZYLA_PKG = "com.cozyla.frame"
 
-AGENT_PKG = "app.cozysync.agent"
+AGENT_PKG = "app.reframe.agent"
 AGENT_VERSION = "0.1.0"
 # The published release of the agent (agent/release.sh prints these). Until one is
 # pinned, set AGENT_APK to a local build (agent/build.sh).
@@ -50,7 +50,7 @@ def _quiet(step: str, pct: int) -> None:
     pass
 
 RESTRICTIONS = "/data/system/users/0/package-restrictions.xml"
-TMP = "/data/local/tmp/cozysync-kiosk.xml"
+TMP = "/data/local/tmp/reframe-kiosk.xml"
 
 
 def _backup_file(cfg: Config, frame_id: str) -> Path:
@@ -64,7 +64,7 @@ def kiosk_apk(cfg: Config) -> Path:
     if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() == KIOSK_APK_SHA256:
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
-    resp = requests.get(KIOSK_APK_URL, timeout=120, headers={"User-Agent": "cozysync"})
+    resp = requests.get(KIOSK_APK_URL, timeout=120, headers={"User-Agent": "reframe"})
     resp.raise_for_status()
     digest = hashlib.sha256(resp.content).hexdigest()
     if digest != KIOSK_APK_SHA256:
@@ -81,16 +81,16 @@ def agent_apk(cfg: Config) -> Path:
             raise FrameError(f"AGENT_APK is set to {local}, which isn't a file")
         return Path(local)
     if not AGENT_APK_URL:
-        raise FrameError("no cozysync agent release is pinned yet; build one with agent/build.sh and set AGENT_APK to it")
-    path = cfg.data_dir / "cache" / f"cozysync-agent-{AGENT_VERSION}.apk"
+        raise FrameError("no reframe agent release is pinned yet; build one with agent/build.sh and set AGENT_APK to it")
+    path = cfg.data_dir / "cache" / f"reframe-agent-{AGENT_VERSION}.apk"
     if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() == AGENT_APK_SHA256:
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
-    resp = requests.get(AGENT_APK_URL, timeout=120, headers={"User-Agent": "cozysync"})
+    resp = requests.get(AGENT_APK_URL, timeout=120, headers={"User-Agent": "reframe"})
     resp.raise_for_status()
     digest = hashlib.sha256(resp.content).hexdigest()
     if digest != AGENT_APK_SHA256:
-        raise FrameError(f"cozysync agent download doesn't match the expected checksum ({digest}); not installing it")
+        raise FrameError(f"reframe agent download doesn't match the expected checksum ({digest}); not installing it")
     path.write_bytes(resp.content)
     return path
 
@@ -240,7 +240,7 @@ def provision(
     save: Callable[[dict[str, Any]], None],
     progress: Progress = _quiet,
 ) -> dict[str, Any]:
-    """Make the frame a cozysync kiosk and return its new kiosk record.
+    """Make the frame a reframe kiosk and return its new kiosk record.
 
     `server` is this server's address as the frame reaches it. `state` is the
     frame's current record (empty the first time); running it again updates the
@@ -293,9 +293,9 @@ def provision(
     k.write_app_file(KIOSK_PREFS, set_prefs(current, kiosk_settings(start_url, password)), KIOSK_PKG)
 
     if k.version(AGENT_PKG) != AGENT_VERSION:
-        progress("Installing the cozysync agent", 70)
+        progress("Installing the reframe agent", 70)
         k.adb.run("install", "-r", str(agent_apk(cfg)), timeout=300)
-    progress("Starting the cozysync agent", 73)
+    progress("Starting the reframe agent", 73)
     keep = [p for p in (original["keep_alive"] or "").split(",") if p]
     keep += [p for p in (AGENT_PKG, KIOSK_PKG) if p not in keep]
     k.set_setting(KEEP_ALIVE_SETTING, ",".join(keep))
@@ -313,7 +313,7 @@ def provision(
     if not k.wait_focused(KIOSK_PKG):
         raise FrameError(f"{KIOSK_NAME} didn't come to the front; the screen shows: {k.focused().strip()}")
     if not k.running(AGENT_PKG):
-        raise FrameError("the cozysync agent didn't start")
+        raise FrameError("the reframe agent didn't start")
 
     return {
         "original": original,
@@ -338,7 +338,7 @@ def deprovision(cfg: Config, frame_id: str, address: str, state: dict[str, Any],
     # The agent goes first, so its watchdog doesn't turn the Cozyla app off again.
     if "agent_installed" in original:
         if not original["agent_installed"] and k.installed(AGENT_PKG):
-            progress("Removing the cozysync agent", 12)
+            progress("Removing the reframe agent", 12)
             k.adb.run("uninstall", AGENT_PKG, timeout=120)
         k.set_setting(KEEP_ALIVE_SETTING, original["keep_alive"])
 

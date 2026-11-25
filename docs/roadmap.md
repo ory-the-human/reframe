@@ -1,6 +1,6 @@
 # Roadmap
 
-Where cozysync could go, and the decisions each path needs. Settled decisions move
+Where reframe could go, and the decisions each path needs. Settled decisions move
 to [decisions.md](decisions.md); the step-by-step plan for the current work is in
 [PLAN.md](../PLAN.md).
 
@@ -16,8 +16,8 @@ scheduled), **idea** (worth recording, undecided).
 | Show synced photos in the Cozyla app | idea | Works only with the frame kept offline ([cozyla-frame.md](cozyla-frame.md)); the kiosk below replaced it. |
 | Cozyla frames as kiosks | done | One-click setup and exact restore from the frame's page ([decisions.md](decisions.md), entry 7). |
 | Store kiosk photos on the frame | next | Push the slideshow page and files to the frame, so it keeps playing with the server off. |
-| On-frame agent | now | Our own small Android app on the frame, so it manages itself and adb is only for setup and recovery (the frames' adb hangs and needs a power cycle). It calls the server, never the other way round: fetches its settings, reports back, and keeps working with the server off. Jobs: screen schedule and light-sensor sleep; a watchdog that keeps the kiosk in front, the Cozyla app off and the kiosk's settings as written, and restarts adb when it hangs; health reports. cozysync installs it with the kiosk and removes it on restore. Screen, clock and health work, and kiosk setup installs it; the watchdog and the first published release are next ([agent.md](agent.md)). |
-| Frame health in the admin app | now | Temperatures, CPU load, memory, storage, uptime and the watchdog's last fixes per frame, on its page, the dashboard and `cozysync health`. Pages done; needs the agent to report. |
+| On-frame agent | now | Our own small Android app on the frame, so it manages itself and adb is only for setup and recovery (the frames' adb hangs and needs a power cycle). It calls the server, never the other way round: fetches its settings, reports back, and keeps working with the server off. Jobs: screen schedule and light-sensor sleep; a watchdog that keeps the kiosk in front, the Cozyla app off and the kiosk's settings as written, and restarts adb when it hangs; health reports. reframe installs it with the kiosk and removes it on restore. Screen, clock and health work, and kiosk setup installs it; the watchdog and the first published release are next ([agent.md](agent.md)). |
+| Frame health in the admin app | now | Temperatures, CPU load, memory, storage, uptime and the watchdog's last fixes per frame, on its page, the dashboard and `reframe health`. Pages done; needs the agent to report. |
 | Video conversion in the sync engine | next | H.264 8-bit, sides a multiple of 32, sized per frame ([cozyla-frame.md](cozyla-frame.md#video-on-the-frame-tested-2026-11-24)). |
 | Kiosk over MQTT | idea | Webview Kiosk speaks MQTT (with Home Assistant discovery); connect it when a broker is configured. |
 | Unattended loop, health, alerts | next | PLAN.md phase 4. |
@@ -36,7 +36,7 @@ scheduled), **idea** (worth recording, undecided).
 
 ## Home Assistant
 
-Goal: people who run Home Assistant can install, set up and manage cozysync
+Goal: people who run Home Assistant can install, set up and manage reframe
 from there, without touching Docker or a terminal.
 
 | Item | Status | Notes |
@@ -73,6 +73,5 @@ shows up.
 | Language for the auth broker | Go, Python | Go: one small binary, cheap to run. |
 | Rewrite the worker in Go too? | Keep Python; rewrite in Go | Keep Python until the worker settles. Revisit if the HA add-on image size or memory on small devices becomes a problem. |
 | Where to host the broker | Fly.io, AWS serverless, VPS | Fly.io: simplest and about $3/month. |
-| Project name | Keep "cozysync"; rename | Rename before going public: the worker isn't Cozyla-only. |
 | License | MIT, Apache-2.0, AGPL | Undecided. AGPL keeps hosted forks of the broker open. |
 | First non-Google source | Share link, Immich | Undecided. |

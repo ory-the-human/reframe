@@ -97,8 +97,8 @@
       })();
     </script>
   {% elif frame.is_kiosk %}
-    <p>This frame runs the cozysync slideshow in {{ frame.kiosk.app }}, which is its home screen.
-      The Cozyla app is turned off. The cozysync agent on the frame runs its screen and reports its health.</p>
+    <p>This frame runs the reframe slideshow in {{ frame.kiosk.app }}, which is its home screen.
+      The Cozyla app is turned off. The reframe agent on the frame runs its screen and reports its health.</p>
     <table>
       <tr><th>Slideshow</th><td><code>{{ frame.kiosk.start_url }}</code></td></tr>
       <tr><th>Settings password</th><td><details><summary>Show</summary><code>{{ frame.kiosk.password }}</code></details></td></tr>
@@ -121,13 +121,13 @@
       <form class="inline" method="post" action="{{ url_for('frame_kiosk_deprovision', frame_id=frame.id) }}"><button class="danger">Restore the Cozyla app</button></form>
     </div>
   {% else %}
-    <p>Replace the Cozyla app with the cozysync slideshow: cozysync installs Webview Kiosk (open source,
-      from F-Droid), makes it the frame's home screen with its settings locked by a password, installs the cozysync agent
+    <p>Replace the Cozyla app with the reframe slideshow: reframe installs Webview Kiosk (open source,
+      from F-Droid), makes it the frame's home screen with its settings locked by a password, installs the reframe agent
       (screen schedule, dark-room sleep, health), and turns off the Cozyla app (its photos, Talking Photo and phone uploads stop). It records how the frame was, so
       "Restore the Cozyla app" puts it back.</p>
     <form method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}"
-          onsubmit='return confirm({{ ("Set up " ~ frame.name ~ " as a cozysync kiosk? It takes about a minute.") | tojson }})'>
-      <button>Set up as a cozysync kiosk</button>
+          onsubmit='return confirm({{ ("Set up " ~ frame.name ~ " as a reframe kiosk? It takes about a minute.") | tojson }})'>
+      <button>Set up as a reframe kiosk</button>
     </form>
   {% endif %}
   {% endif %}

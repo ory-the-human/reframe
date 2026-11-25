@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>cozysync slideshow</title>
+  <title>reframe slideshow</title>
   <style>
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
     #stage { position: absolute; left: 50%; top: 50%; overflow: hidden; }
@@ -203,7 +203,7 @@
     if (pos < history.length - 1) { go(pos + 1); return; }
     var my = ++seq;
     if (!items.length) {
-      message.textContent = "No photos yet. They appear here once cozysync has synced some.";
+      message.textContent = "No photos yet. They appear here once reframe has synced some.";
       message.style.display = "flex";
       if (current) { current.remove(); current = null; }
       schedule(REFRESH_MS);
@@ -252,7 +252,7 @@
       })
       .catch(function () {
         // Keep showing what we have; try again later.
-        if (first) { message.textContent = "Can't reach cozysync. Retrying…"; setTimeout(function () { refresh(true); }, 10000); }
+        if (first) { message.textContent = "Can't reach reframe. Retrying…"; setTimeout(function () { refresh(true); }, 10000); }
       });
   }
 

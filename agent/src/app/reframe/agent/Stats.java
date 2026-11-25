@@ -1,4 +1,4 @@
-package app.cozysync.agent;
+package app.reframe.agent;
 
 import android.os.Environment;
 import android.os.StatFs;

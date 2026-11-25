@@ -132,11 +132,10 @@ keeping up with Google's policies.
   per Google account and drive several frames from it (decisions.md, entry 5);
   ask during the integration review.
 - Where to host the broker, and who pays for it.
-- The name: "cozysync" is tied to Cozyla, but the worker supports any frame.
 
 ## Partner program application (draft)
 
-> **Product.** cozysync, a free, open-source service that shows a user's
+> **Product.** reframe, a free, open-source service that shows a user's
 > chosen Google Photos albums on photo frames and TVs they already own, such as
 > Cozyla frames, Android-based frames, and any display that shows images from a
 > folder.

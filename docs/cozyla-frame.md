@@ -1,13 +1,13 @@
 # The Cozyla frame: discovery and security
 
 What we found on two Cozyla frames on 2026-11-24, how to find them on a
-network, and what it means for anyone running cozysync with a Cozyla.
+network, and what it means for anyone running reframe with a Cozyla.
 
 ## The frames we checked
 
 Two Cozyla CD-3X341F frames on a home network, with identical firmware and apps.
 Their addresses come from DHCP and changed over time, so give each frame a fixed
-lease in the router (or, later, let cozysync find them: see below). The owner's
+lease in the router (or, later, let reframe find them: see below). The owner's
 own addresses and serials are kept out of Git, in `private/` (git-ignored).
 
 ## Finding frames on a network
@@ -70,11 +70,11 @@ in the boot image, which risks bricking it. We don't.
 ## Recommendations
 
 1. **Isolate the frames** on an IoT network or VLAN, with a firewall rule that
-   lets only the cozysync host reach port 5555. This removes most of the risk;
-   cozysync needs nothing else.
-2. **Try blocking their internet.** If cozysync pushes the photos, the frames may
+   lets only the reframe host reach port 5555. This removes most of the risk;
+   reframe needs nothing else.
+2. **Try blocking their internet.** If reframe pushes the photos, the frames may
    not need the Cozyla cloud; check the clock (NTP) and the app still work.
-3. **A firewall rule on the frame** as a backup: as root, cozysync can add an
+3. **A firewall rule on the frame** as a backup: as root, reframe can add an
    `iptables` rule letting only its own address reach 5555, on every connect.
    It's lost on reboot, so it complements 1 and doesn't replace it.
 4. Treat a working adb connection as proof of nothing: anyone can connect.

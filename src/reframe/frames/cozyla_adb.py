@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .base import FrameError
 
-DEFAULT_DIR = "/sdcard/Android/obb/com.cozyla.frame/media/IMAGE/cozysync"
+DEFAULT_DIR = "/sdcard/Android/obb/com.cozyla.frame/media/IMAGE/reframe"
 
 
 def adb(address: str, *args: str, timeout: int = 60) -> str:

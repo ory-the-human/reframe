@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>cozysync</title>
+  <title>reframe</title>
   <style>
     :root {
       --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a66;
@@ -67,7 +67,7 @@
 <body>
 <main>
   <header>
-    <h1>cozysync</h1>
+    <h1>reframe</h1>
     <nav><a href="{{ url_for('index') }}">Dashboard</a><a href="{{ url_for('settings') }}">Settings</a></nav>
   </header>
   {% for category, message in get_flashed_messages(with_categories=true) %}

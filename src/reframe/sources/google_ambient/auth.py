@@ -87,7 +87,7 @@ class TokenStore:
     def access_token(self) -> str:
         token = read_json(self.cfg.token_file)
         if token is None:
-            raise AuthError("not signed in; run `cozysync login` first")
+            raise AuthError("not signed in; run `reframe login` first")
         if time.time() < token["expires_at"] - EXPIRY_MARGIN_S:
             return token["access_token"]
         return self._refresh(token)["access_token"]

@@ -55,7 +55,7 @@ def _protect() -> Optional[Response]:
     if password:
         auth = request.authorization
         if not (auth and auth.password and hmac.compare_digest(auth.password, password)):
-            return Response("Authentication required", 401, {"WWW-Authenticate": 'Basic realm="cozysync"'})
+            return Response("Authentication required", 401, {"WWW-Authenticate": 'Basic realm="reframe"'})
     # Reject cross-site form posts: any page on the internet could otherwise
     # submit to this LAN address from the user's browser.
     if request.method == "POST":
@@ -392,7 +392,7 @@ def _run_kiosk_job(cfg: config.Config, frame: registry.FrameConfig, deprovisioni
         else:
             agent_key = agent.ensure_key(cfg, frame)
             save(kiosk.provision(cfg, frame.id, frame.address, server, frame.key, agent_key, frame.kiosk, save, progress))
-            job["result"] = f"{frame.name} is now a cozysync kiosk."
+            job["result"] = f"{frame.name} is now a reframe kiosk."
     except Exception as e:
         job["error"] = f"{type(e).__name__}: {e}"
     finally:
@@ -505,5 +505,5 @@ def serve(host: str, port: int) -> None:
     from waitress import serve as waitress_serve
 
     app.secret_key = _secret_key()
-    print(f"cozysync web UI on http://{host}:{port}")
+    print(f"reframe web UI on http://{host}:{port}")
     waitress_serve(app, host=host, port=port, threads=4)

@@ -20,9 +20,9 @@ javac --release 8 -Xlint:-options -classpath "$JAR" -d "$OUT/classes" $(find src
 
 if [ ! -f "$KEYSTORE" ]; then
   mkdir -p "$(dirname "$KEYSTORE")"
-  keytool -genkeypair -keystore "$KEYSTORE" -storepass cozysync -alias agent -keyalg RSA -keysize 3072 \
-    -validity 36500 -dname "CN=cozysync agent" >/dev/null
+  keytool -genkeypair -keystore "$KEYSTORE" -storepass reframe -alias agent -keyalg RSA -keysize 3072 \
+    -validity 36500 -dname "CN=reframe agent" >/dev/null
   echo "Created signing key $KEYSTORE"
 fi
-"$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:cozysync --out "$OUT/cozysync-agent.apk" "$OUT/aligned.apk"
-echo "Built $(pwd)/$OUT/cozysync-agent.apk"
+"$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:reframe --out "$OUT/reframe-agent.apk" "$OUT/aligned.apk"
+echo "Built $(pwd)/$OUT/reframe-agent.apk"

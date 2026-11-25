@@ -36,7 +36,7 @@ def print_sources(device: dict) -> None:
 def load_device(cfg: config.Config) -> dict:
     device = read_json(cfg.device_file)
     if device is None:
-        sys.exit("No Ambient device yet; run `cozysync login` first.")
+        sys.exit("No Ambient device yet; run `reframe login` first.")
     return device
 
 
@@ -114,7 +114,7 @@ def cmd_diff(cfg: config.Config, args: argparse.Namespace) -> None:
     else:
         latest = snapshots.diff_latest(cfg)
         if latest is None:
-            sys.exit("Need two snapshots from this version; run `cozysync list` twice.")
+            sys.exit("Need two snapshots from this version; run `reframe list` twice.")
         old_path, new_path, changes = latest
 
     print(f"old: {old_path.name}")
@@ -155,7 +155,7 @@ def cmd_frames(cfg: config.Config, args: argparse.Namespace) -> None:
         return
     all_frames = frames.load_all(cfg)
     if not all_frames:
-        print("No frames yet; add one with `cozysync frames add NAME --type ...`.")
+        print("No frames yet; add one with `reframe frames add NAME --type ...`.")
     for f in all_frames:
         albums = ", ".join(a["name"] for a in f.albums) or "all albums"
         kind = f"{f.kind} (kiosk)" if f.is_kiosk else f.kind
@@ -209,7 +209,7 @@ def _edit_frame(cfg: config.Config, f: registry.FrameConfig, args: argparse.Name
         f.albums = [{"id": a, "name": known.get(a, a)} for a in args.album]
     screen = {flag: key for flag, key in SCREEN_FLAGS.items() if getattr(args, flag) is not None}
     if screen and not f.is_kiosk:
-        sys.exit("Screen settings are for kiosk frames; set one up with `cozysync kiosk setup`.")
+        sys.exit("Screen settings are for kiosk frames; set one up with `reframe kiosk setup`.")
     for flag, key in {**DISPLAY_FLAGS, **screen}.items():
         value = getattr(args, flag)
         if value is None:
@@ -251,9 +251,9 @@ def _show_frame(cfg: config.Config, f: registry.FrameConfig) -> None:
         dark = f"off below {screen['dark_lux']} lux for {screen['dark_seconds']} s" if screen["dark"] else "ignored"
         print(f"{'room light':>12}: {dark}{own['dark'] or own['dark_lux'] or own['dark_seconds']}")
         print(f"{'kiosk':>12}: {f.kiosk.get('app')} {f.kiosk.get('app_version')}, plays {f.kiosk.get('start_url')}")
-        print(f"{'':>12}  password: `cozysync kiosk show {shlex.quote(f.name)}`")
+        print(f"{'':>12}  password: `reframe kiosk show {shlex.quote(f.name)}`")
     elif f.kiosk:
-        print(f"{'kiosk':>12}: setup didn't finish; run `cozysync kiosk setup` or `restore`")
+        print(f"{'kiosk':>12}: setup didn't finish; run `reframe kiosk setup` or `restore`")
     if f.agent_key:
         print(f"{'agent':>12}: {_health_line(agent.health(cfg, f))}")
 
@@ -418,7 +418,7 @@ def cmd_web(cfg: config.Config, args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="cozysync", description="Sync photo albums to photo frames")
+    parser = argparse.ArgumentParser(prog="reframe", description="Sync photo albums to photo frames")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("web", help="run the web UI for setup, sign-in and testing")
@@ -487,7 +487,7 @@ def main() -> None:
     p.add_argument("--forget-device", action="store_true", help="also remove the device from Google Photos")
     p.set_defaults(func=cmd_signout)
 
-    p = sub.add_parser("kiosk", help="set up a Cozyla frame as a cozysync kiosk, or restore it")
+    p = sub.add_parser("kiosk", help="set up a Cozyla frame as a reframe kiosk, or restore it")
     p.add_argument("action", choices=["setup", "restore", "show"])
     p.add_argument("frame", help="frame name or id")
     p.add_argument("--url", help="setup: this server's address as frames see it, e.g. http://192.168.1.10:1992")

@@ -12,7 +12,7 @@ clock and health reports, and kiosk setup installs it. The watchdog is next.
 
 `agent/build.sh` builds the APK without Gradle (JDK 17, Android SDK platform 34 and
 build-tools 34.0.0). `agent/release.sh` builds a release and prints the version,
-URL placeholder and checksum to pin in `src/cozysync/frames/kiosk.py`; the server
+URL placeholder and checksum to pin in `src/reframe/frames/kiosk.py`; the server
 downloads that release when it sets up a kiosk, like it does Webview Kiosk. Until a
 release is pinned, or to try a local build, set `AGENT_APK` to the APK's path.
 
@@ -43,7 +43,7 @@ it and puts the list back.
 
 The agent calls the server; the server never calls the frame. Every request
 carries the frame's agent key: `Authorization: Bearer <key>`. The key is written
-onto the frame at setup (`cozysync agent FRAME` shows it, and the config, for
+onto the frame at setup (`reframe agent FRAME` shows it, and the config, for
 testing by hand). A wrong or missing key gets `401`.
 
 ### `GET /agent/v1/config`

@@ -1,4 +1,4 @@
-package app.cozysync.agent;
+package app.reframe.agent;
 
 import android.app.Notification;
 import android.app.Service;
@@ -33,15 +33,15 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 /**
- * The cozysync agent: keeps the frame's screen on its schedule and the room light,
- * keeps the clock right, and reports the frame's health to the cozysync server.
+ * The reframe agent: keeps the frame's screen on its schedule and the room light,
+ * keeps the clock right, and reports the frame's health to the reframe server.
  *
  * It only ever calls the server (docs/agent.md), and keeps working on its last
- * config while the server is unreachable. Started at boot, and by cozysync with the
+ * config while the server is unreachable. Started at boot, and by reframe with the
  * extras "server" (base URL) and "key" (the frame's agent key) to set it up.
  */
 public class AgentService extends Service {
-    static final String TAG = "cozysync-agent";
+    static final String TAG = "reframe-agent";
     private static final long CLOCK_SLACK_MS = 10 * 1000;
     private static final int HTTP_TIMEOUT_MS = 10 * 1000;
 
@@ -60,7 +60,7 @@ public class AgentService extends Service {
     public void onCreate() {
         super.onCreate();
         Notification note = new Notification.Builder(this)
-                .setContentTitle("cozysync agent")
+                .setContentTitle("reframe agent")
                 .setSmallIcon(android.R.drawable.ic_menu_gallery)
                 .setPriority(Notification.PRIORITY_MIN)
                 .build();

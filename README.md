@@ -1,4 +1,4 @@
-# cozysync
+# reframe
 
 A self-hosted worker that syncs photo albums to photo frames. Photo **sources**
 and **frames** are plug-ins:
@@ -7,11 +7,11 @@ and **frames** are plug-ins:
 |---|---|
 | `google_ambient`: Google Photos via the [Photos Ambient API](https://developers.google.com/photos/ambient/guides/about) (needs the Google Photos partner program) | `cozyla_adb`: a Cozyla (or rooted Android) frame over adb on Wi-Fi |
 | next: Google Photos share link, Immich | `folder`: any folder or mounted share a display reads from |
-| | `web`: a full-screen browser slideshow served by cozysync, for any kiosk browser, tablet, TV browser or web view |
+| | `web`: a full-screen browser slideshow served by reframe, for any kiosk browser, tablet, TV browser or web view |
 
 One worker drives any number of frames, each with its own type, albums and
 display settings. Pick the source in `.env` or the web UI's settings, and add
-frames on the dashboard or with `cozysync frames add`. It runs as a Docker
+frames on the dashboard or with `reframe frames add`. It runs as a Docker
 container, for example on a NAS.
 
 See [PLAN.md](PLAN.md) for the plan, [docs/decisions.md](docs/decisions.md) for why
@@ -26,10 +26,10 @@ source is next.
 
 ## 1. Google Cloud setup (one time, `google_ambient` source only)
 
-1. Go to <https://console.cloud.google.com/> and create a project, e.g. `cozysync`.
+1. Go to <https://console.cloud.google.com/> and create a project, e.g. `reframe`.
 2. **APIs & Services → Library**: search for **Photos Ambient API** and click **Enable**.
 3. **APIs & Services → OAuth consent screen** (Google Auth Platform):
-   - User type **External**, app name `cozysync`, with your email as support and
+   - User type **External**, app name `reframe`, with your email as support and
      developer contact.
    - **Data access / Scopes**: add `https://www.googleapis.com/auth/photosambient.mediaitems`.
    - **Audience / Test users**: add your own Google account.
@@ -88,8 +88,8 @@ full screen, fades between photos, picks up new photos and setting changes withi
 
 ### Cozyla frames as kiosks
 
-On a Cozyla frame's page, **Set up as a cozysync kiosk** replaces the Cozyla app
-with the cozysync slideshow, in about a minute:
+On a Cozyla frame's page, **Set up as a reframe kiosk** replaces the Cozyla app
+with the reframe slideshow, in about a minute:
 
 1. Installs [Webview Kiosk](https://f-droid.org/en/packages/uk.nktnet.webviewkiosk/)
    (open source, from F-Droid, checked against a pinned checksum).
@@ -98,19 +98,19 @@ with the cozysync slideshow, in about a minute:
    tap the top-left quarter of the screen 10 times to open its settings.
 3. Turns off the Cozyla app, so the kiosk is the home screen, also after a reboot.
 
-cozysync records how the frame was first. **Restore the Cozyla app** puts it back
+reframe records how the frame was first. **Restore the Cozyla app** puts it back
 exactly: the Cozyla app on and the kiosk app removed. The Cozyla app keeps its
-photos while it's off. A frame set up as a kiosk can't be removed from cozysync
+photos while it's off. A frame set up as a kiosk can't be removed from reframe
 until it's restored. The link uses Settings → "Address frames use to reach this
 server" (`PUBLIC_URL`), or the address you opened the web UI with.
 
 Kiosk frames also get a **Screen** section (a schedule and turning off in a dark
 room, with defaults in Settings) and a **Health** section (temperatures, load,
-memory, storage, uptime). Both come from the cozysync agent, a small app that kiosk
+memory, storage, uptime). Both come from the reframe agent, a small app that kiosk
 setup installs on the frame; see [docs/agent.md](docs/agent.md). Until an agent
 release is published, set `AGENT_APK` to a local build (`agent/build.sh`).
 
-`cozysync frame-put FRAME photo.jpg …` copies files to a frame by hand,
+`reframe frame-put FRAME photo.jpg …` copies files to a frame by hand,
 which is handy for trying the slideshow before the sync engine exists.
 
 ### CLI
@@ -119,34 +119,34 @@ The same steps are available on the command line, which is handy when testing
 from a laptop:
 
 ```sh
-docker compose run --rm cozysync login         # google_ambient: sign in, pick albums
-docker compose run --rm cozysync device        # google_ambient: device, albums, token age
-docker compose run --rm cozysync list --download 3
-docker compose run --rm cozysync diff          # compare the last two snapshots
-docker compose run --rm cozysync frames                          # list frames
-docker compose run --rm cozysync frames add "Kitchen" --type web
-docker compose run --rm cozysync frames add "Living room" --type cozyla_adb --address 192.168.1.50:5555
-docker compose run --rm cozysync frames show Kitchen             # details and slideshow link
-docker compose run --rm cozysync frames edit Kitchen --interval 10 --fill black --album ID
-docker compose run --rm cozysync frames edit Kitchen --interval ""   # back to the default
-docker compose run --rm cozysync settings                        # list settings
-docker compose run --rm cozysync settings set public_url http://192.168.1.10:1992
-docker compose run --rm cozysync settings unset display_layout   # back to .env or the default
-docker compose run --rm cozysync signout [--forget-device]       # google_ambient
-docker compose run --rm cozysync frame-check                     # all frames, or name one
-docker compose run --rm cozysync frame-put Kitchen /data/samples/*.jpg
-docker compose run --rm cozysync kiosk setup "Living room" --url http://192.168.1.10:1992
-docker compose run --rm cozysync kiosk show "Living room"       # settings password
-docker compose run --rm cozysync kiosk restore "Living room"    # back to the Cozyla app
-docker compose run --rm cozysync frames edit "Living room" --schedule 23:00-07:00 --dark yes
-docker compose run --rm cozysync health                          # what the frame agents report
+docker compose run --rm reframe login         # google_ambient: sign in, pick albums
+docker compose run --rm reframe device        # google_ambient: device, albums, token age
+docker compose run --rm reframe list --download 3
+docker compose run --rm reframe diff          # compare the last two snapshots
+docker compose run --rm reframe frames                          # list frames
+docker compose run --rm reframe frames add "Kitchen" --type web
+docker compose run --rm reframe frames add "Living room" --type cozyla_adb --address 192.168.1.50:5555
+docker compose run --rm reframe frames show Kitchen             # details and slideshow link
+docker compose run --rm reframe frames edit Kitchen --interval 10 --fill black --album ID
+docker compose run --rm reframe frames edit Kitchen --interval ""   # back to the default
+docker compose run --rm reframe settings                        # list settings
+docker compose run --rm reframe settings set public_url http://192.168.1.10:1992
+docker compose run --rm reframe settings unset display_layout   # back to .env or the default
+docker compose run --rm reframe signout [--forget-device]       # google_ambient
+docker compose run --rm reframe frame-check                     # all frames, or name one
+docker compose run --rm reframe frame-put Kitchen /data/samples/*.jpg
+docker compose run --rm reframe kiosk setup "Living room" --url http://192.168.1.10:1992
+docker compose run --rm reframe kiosk show "Living room"       # settings password
+docker compose run --rm reframe kiosk restore "Living room"    # back to the Cozyla app
+docker compose run --rm reframe frames edit "Living room" --schedule 23:00-07:00 --dark yes
+docker compose run --rm reframe health                          # what the frame agents report
 ```
 
 Running locally without Docker (Python 3.9+):
 
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -e .
-DATA_DIR=./data .venv/bin/cozysync web --port 1992
+DATA_DIR=./data .venv/bin/reframe web --port 1992
 ```
 
 ## Notes
@@ -158,10 +158,10 @@ DATA_DIR=./data .venv/bin/cozysync web --port 1992
 - The web UI is for the LAN only; don't expose port 1992 to the internet. Set
   `WEB_PASSWORD`, because without it anyone on your network can use the UI.
   Cross-site form posts are rejected.
-- Adding a source: implement `Source` from `src/cozysync/sources/base.py` and
+- Adding a source: implement `Source` from `src/reframe/sources/base.py` and
   register it in `sources/__init__.py`. Adding a frame: implement `Frame` from
-  `src/cozysync/frames/base.py` and register it in `frames/__init__.py`.
+  `src/reframe/frames/base.py` and register it in `frames/__init__.py`.
 - The Ambient API allows 240 `mediaItems.list` calls per device per day, with up
   to 100 items per call.
 - While the OAuth app is in **Testing** status, Google's refresh tokens expire
-  after 7 days. `cozysync device` prints the token's age so we can confirm this.
+  after 7 days. `reframe device` prints the token's age so we can confirm this.

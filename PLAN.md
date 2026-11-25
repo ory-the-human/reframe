@@ -4,7 +4,7 @@ Goal: keep the owner's two Cozyla photo frames showing a Google Photos album
 privately, without a public share link, using a small Docker service on the NAS.
 
 **Direction as of 2026-11-23** (details in [docs/decisions.md](docs/decisions.md)):
-the Ambient API needs Google's partner program, so cozysync becomes an open-source,
+the Ambient API needs Google's partner program, so reframe becomes an open-source,
 self-hosted worker with pluggable **sources** (where photos come from) and
 **frames** (where they go), plus a hosted auth broker for Google if we're accepted
 ([docs/hosted-auth.md](docs/hosted-auth.md)). Phases below are updated for that.
@@ -35,8 +35,8 @@ Google Ambient,         lists albums, fetches              Cozyla (adb), folder,
 share link, Immich      resized, tracks state in /data     TVs later
 ```
 
-Code: `src/cozysync/sources/` (the `Source` interface in `base.py`, one package or
-module per source) and `src/cozysync/frames/` (the `Frame` interface, one module per
+Code: `src/reframe/sources/` (the `Source` interface in `base.py`, one package or
+module per source) and `src/reframe/frames/` (the `Frame` interface, one module per
 frame type). The configured pair is chosen with `SOURCE` and `FRAME`.
 
 The original Google Ambient design:
@@ -57,10 +57,10 @@ service can only see what was picked, so no public link is needed.
    OAuth consent screen (External, add yourself as a test user), and create an
    OAuth client of type **TVs and Limited Input devices**.
 2. Put the client ID and secret in `.env` and run
-   `docker compose run --rm cozysync login`. This runs the device-code flow with
+   `docker compose run --rm reframe login`. This runs the device-code flow with
    the streamlined `state`, creates the Ambient device, and waits until albums
    are picked.
-3. Run `docker compose run --rm cozysync list --download 5`, then check the
+3. Run `docker compose run --rm reframe list --download 5`, then check the
    results.
 
 Questions phase 1 must answer:
