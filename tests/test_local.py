@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from PIL import Image
@@ -37,6 +38,19 @@ class LocalAlbumTest(unittest.TestCase):
         local.LocalSource(self.cfg).fetch(item, dest, 1000)
         with Image.open(dest) as img:
             self.assertEqual((img.format, img.size), ("JPEG", (750, 1000)))
+
+    def test_second_listing_reuses_cached_dates_until_a_file_is_replaced(self):
+        a = local.add(self.cfg, "Videos")
+        video = local.album_dir(self.cfg, a["id"]) / "clip.mp4"
+        video.write_bytes(b"x")
+        album = Album(a["id"], a["name"])
+        with mock.patch.object(local, "_video_created", return_value="2024-05-01T12:00:00+00:00") as read:
+            local.LocalSource(self.cfg).list_album(album)
+            [item] = local.LocalSource(self.cfg).list_album(album).items
+            self.assertEqual((read.call_count, item.created), (1, "2024-05-01T12:00:00+00:00"))
+            video.write_bytes(b"xy")
+            local.LocalSource(self.cfg).list_album(album)
+            self.assertEqual(read.call_count, 2)
 
 
 if __name__ == "__main__":

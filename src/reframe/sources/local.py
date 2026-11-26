@@ -129,17 +129,19 @@ class LocalSource:
         return [Album(a["id"], a["name"]) for a in saved_albums(self.cfg)]
 
     def list_album(self, album: Album) -> Listing:
-        items = []
+        cache = read_json(self.cfg.data_dir / "local_dates.json") or {}
+        dates, items = {}, []
         for path, mime in files(self.cfg, album.id):
             st = path.stat()
-            created = (_video_created if mime.startswith("video/") else _photo_created)(path)
-            items.append(MediaItem(
-                # Changes when the file is replaced, so frames get the new one.
-                id=hashlib.sha256(f"{album.id}/{path.name}:{st.st_size}:{st.st_mtime_ns}".encode()).hexdigest()[:32],
-                mime_type=mime,
-                created=created or datetime.fromtimestamp(st.st_mtime).astimezone().isoformat(),
-                extra={"local": f"{album.id}/{path.name}"},
-            ))
+            # Changes when the file is replaced, so frames get the new one.
+            item_id = hashlib.sha256(f"{album.id}/{path.name}:{st.st_size}:{st.st_mtime_ns}".encode()).hexdigest()[:32]
+            dates[item_id] = cache.get(album.id, {}).get(item_id) or (
+                (_video_created if mime.startswith("video/") else _photo_created)(path)
+                or datetime.fromtimestamp(st.st_mtime).astimezone().isoformat()
+            )
+            items.append(MediaItem(id=item_id, mime_type=mime, created=dates[item_id], extra={"local": f"{album.id}/{path.name}"}))
+        if dates != cache.get(album.id):
+            write_json(self.cfg.data_dir / "local_dates.json", {**cache, album.id: dates})
         return Listing(album=album, items=items, complete=True, trusted=True)
 
     def fetch(self, item: MediaItem, dest: Path, max_px: int) -> None:

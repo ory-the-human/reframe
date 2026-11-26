@@ -199,6 +199,7 @@ DATA_DIR=./data .venv/bin/reframe web --port 1992
   and kiosk frames, which play from the server and keep their photos in
   `data/frames/<id>/`. `data/samples/` is only for
   the listing test.
+  `data/local_dates.json` caches local albums' taken dates.
 - `data/` holds the album share links, OAuth tokens and the OAuth client secret. It's git-ignored and
   written with `0600` permissions.
 - The web UI is for the LAN only; don't expose port 1992 to the internet. Set
