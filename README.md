@@ -132,7 +132,9 @@ setup installs on the frame; see [docs/agent.md](docs/agent.md). The agent also
 keeps the frame as setup left it, and closes the frame's adb (root, no password,
 open to the network) 2 minutes after it powers on. To update or restore a kiosk,
 unplug the frame, plug it back in, and start within those 2 minutes; adb stays
-open while reframe is connected. To try a local agent build, set `AGENT_APK` to it
+open while reframe is connected. From agent 0.3.0 the frame plays the slideshow
+from its own copy of the photos, so it keeps going while the server is off, and the
+frame's page can take a screenshot of it. To try a local agent build, set `AGENT_APK` to it
 (`agent/build.sh`).
 
 ### CLI

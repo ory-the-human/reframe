@@ -362,6 +362,9 @@ def _frame_form(cfg: config.Config, frame: registry.FrameConfig, is_new: bool):
         screen_choices=config.SCREEN_CHOICES,
         screen=frames.screen_for(cfg, frame),
         health=agent.health(cfg, frame) if frame.agent_key else None,
+        screenshot=agent.screenshot(cfg, frame) if frame.agent_key else None,
+        reboot_requested=bool(frame.agent_key) and agent.requested(cfg, frame, "reboot"),
+        kiosk_home=agent.home_url(cfg, frame) if frame.is_kiosk else None,
     )
 
 
@@ -413,6 +416,36 @@ def frame_delete(frame_id: str):
     _frame_checks.pop(frame_id, None)
     flash("Frame removed.", "ok")
     return redirect(url_for("index") + "#frames")
+
+
+@app.post("/frames/<frame_id>/screenshot")
+def frame_screenshot(frame_id: str):
+    cfg = config.load()
+    try:
+        frame = registry.find(frames.load_all(cfg), frame_id)
+    except frames.FrameError:
+        abort(404)
+    agent.request(cfg, frame, "screenshot")
+    flash("Asked the frame for a screenshot. It arrives within a minute; reload this page.", "ok")
+    return redirect(url_for("frame_edit", frame_id=frame_id) + "#screenshot")
+
+
+@app.post("/frames/<frame_id>/reboot")
+def frame_reboot(frame_id: str):
+    cfg = config.load()
+    try:
+        frame = registry.find(frames.load_all(cfg), frame_id)
+    except frames.FrameError:
+        abort(404)
+    agent.request(cfg, frame, "reboot")
+    flash("Asked the frame to reboot.", "ok")
+    return redirect(url_for("frame_edit", frame_id=frame_id) + "#reboot")
+
+
+@app.get("/frames/<frame_id>/screenshot.png")
+def frame_screenshot_png(frame_id: str):
+    path = agent.screenshot_file(config.load(), frame_id)
+    return send_from_directory(path.parent, path.name, max_age=0)
 
 
 @app.post("/frames/<frame_id>/check")
@@ -533,7 +566,10 @@ def slideshow(key: str):
 @app.get("/show/<key>/playlist")
 def slideshow_playlist(key: str):
     # Polled by the slideshow, so new photos and setting changes show up without a reload.
-    cfg, frame = _web_frame(key)
+    return _playlist(*_web_frame(key))
+
+
+def _playlist(cfg: config.Config, frame: registry.FrameConfig) -> dict[str, Any]:
     media = web_frame.list_media(registry.web_media_dir(cfg.data_dir, frame.id))
     taken = sync.taken(cfg, frame.id)
     return {"display": frames.display_for(cfg, frame), "items": [{**m, "taken": taken.get(m["name"])} for m in media]}
@@ -576,7 +612,33 @@ def agent_report():
         abort(400)
     agent.save_report(cfg, frame, report)
     # The agent fetches its config again when this changes.
-    return {"ok": True, "config_version": agent.agent_config(cfg, frame)["version"]}
+    reply = {"ok": True, "config_version": agent.agent_config(cfg, frame)["version"]}
+    for what in ("screenshot", "reboot"):
+        if agent.wanted(cfg, frame, what):
+            reply[what] = True
+    return reply
+
+
+@app.get("/agent/v1/slideshow")
+def agent_slideshow():
+    # The agent keeps a copy of this and the files, and serves the slideshow on the frame.
+    cfg, frame = _agent_frame()
+    return {**_playlist(cfg, frame), "page": render_template("slideshow.html", key=frame.key)}
+
+
+@app.get("/agent/v1/media/<name>")
+def agent_media(name: str):
+    cfg, frame = _agent_frame()
+    return send_from_directory(registry.web_media_dir(cfg.data_dir, frame.id), name)
+
+
+@app.post("/agent/v1/screenshot")
+def agent_screenshot():
+    cfg, frame = _agent_frame()
+    if (request.content_length or 0) > agent.MAX_SCREENSHOT_BYTES:
+        abort(413)
+    agent.save_screenshot(cfg, frame, request.get_data())
+    return {"ok": True}
 
 
 def serve(host: str, port: int) -> None:
