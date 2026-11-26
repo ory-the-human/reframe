@@ -38,6 +38,11 @@ cp .env.example .env   # set WEB_PASSWORD; everything else can be done in the UI
 docker compose up -d --build
 ```
 
+On NixOS, use the published image instead: add
+[deploy/nixos/reframe.nix](deploy/nixos/reframe.nix) to `imports`, write the
+settings to `/var/lib/reframe/reframe.env` (the same lines as `.env.example`) and
+run `nixos-rebuild switch`. To update, change `version` in that file and rebuild.
+
 Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
 
 1. **Settings → Albums**: paste each album's share link, with a name if you want
@@ -193,6 +198,9 @@ DATA_DIR=./data .venv/bin/reframe web --port 1992
 - Adding a source: implement `Source` from `src/reframe/sources/base.py` and
   register it in `sources/__init__.py`. Adding a frame: implement `Frame` from
   `src/reframe/frames/base.py` and register it in `frames/__init__.py`.
+- Releasing the server: set `version` in `pyproject.toml`, merge it, and push the
+  tag `v<version>`. The `Server release` workflow publishes
+  `ghcr.io/ory-the-human/reframe:<version>` (and `:latest`) for amd64 and arm64.
 - The Ambient API allows 240 `mediaItems.list` calls per device per day, with up
   to 100 items per call.
 - While the OAuth app is in **Testing** status, Google's refresh tokens expire
