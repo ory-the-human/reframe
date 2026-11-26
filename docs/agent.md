@@ -46,6 +46,10 @@ Keep a backup of it.
   a kiosk frame.
 - **Health:** reports temperatures, CPU load, memory, storage, uptime and the
   screen's state once a minute.
+- **Local slideshow:** keeps a copy of the frame's photos and plays the slideshow
+  from the frame itself, so it keeps going while the server is off (below).
+- **Screenshots:** sends a picture of the screen when asked from the frame's page (below).
+- **Reboot:** reboots the frame when asked from the frame's page (below).
 
 It runs as a foreground service. The firmware drops `BOOT_COMPLETED` for apps it
 doesn't list, so the agent also starts when Wi-Fi connects (about 15 s after boot)
@@ -108,19 +112,63 @@ Once every `report_seconds`, as JSON, at most 64 KB. Every field is optional.
   "storage": {"total_kb": 5200000, "free_kb": 3100000},
   "screen": {"on": true, "why": "schedule", "lux": 40, "brightness": 180},
   "foreground": "uk.nktnet.webviewkiosk",
-  "fixes": [{"at": 1795000000, "what": "Turned the Cozyla app off again"}]
+  "fixes": [{"at": 1795000000, "what": "Turned the Cozyla app off again"}],
+  "local_port": 1992
 }
 ```
 
 - `temperatures` in °C, by sensor name. `screen.why`: what decided the screen's
   state (`schedule`, `dark`, `touch`, `on`). `fixes` are only those since the last
   report; `at` is a Unix time.
+- `local_port`: sent once the agent can serve the slideshow itself (below).
 - The reply is `{"ok": true, "config_version": "…"}`. When that differs from the
   agent's, it fetches the config again, so settings changes arrive within a minute.
+  It has `"screenshot": true` when a screenshot was asked for, and `"reboot": true`
+  when a reboot was (below).
 
 The server keeps the latest report, 12 hours of history (temperature, load, memory,
 screen) and the last 50 fixes per frame in `/data/agents/<frame id>.json`. A frame
 counts as offline after 3 minutes without a report.
+
+## Local slideshow
+
+From agent 0.3.0 the kiosk plays the slideshow from the agent on
+`http://127.0.0.1:1992/show/<key>`, with the server's URL layout, so the page is the
+same `slideshow.html`. Photos and videos keep playing while the server is off, with
+the last display settings and dates.
+
+- **Copy:** once a minute, on its own thread, the agent fetches
+  `GET /agent/v1/slideshow`: the playlist `/show/<key>/playlist` gives
+  (`display`, `items` with `name`, `type`, `taken`) plus the rendered page as `page`.
+  It saves that as `files/slideshow.json`, deletes files no longer listed and downloads
+  missing ones from `GET /agent/v1/media/<name>`, each to `<name>.part` and then renamed,
+  so a half file is never shown. Files are in `/data/data/app.reframe.agent/files/media/`.
+  A failed download ends the round; the next one carries on.
+- **Serving:** a small HTTP server on 127.0.0.1 only: `/show/<key>` (the page),
+  `/show/<key>/playlist` (only files already on the frame, so new photos appear as
+  they arrive) and `/show/<key>/media/<name>`, with byte ranges (`206`), which the
+  WebView's video needs. The key isn't checked: only apps on the frame can connect.
+- **Switch-over:** once the agent has a copy, its reports carry `"local_port": 1992`.
+  The server then gives `http://127.0.0.1:1992/show/<key>` as the kiosk's home URL in
+  the config, and the watchdog rewrites the kiosk's settings (2 minutes later) and
+  reopens it. Agents that don't send `local_port` keep the server's URL. The frame's
+  page shows which one the kiosk uses. "Update kiosk settings" writes the server's URL;
+  the watchdog moves it back 2 minutes later.
+
+## Screenshots
+
+"Take a screenshot" on the frame's page flags the frame; the reply to its next report
+has `"screenshot": true` (once). The agent runs `screencap -p` as root and sends the
+PNG to `POST /agent/v1/screenshot` (`image/png`, at most 8 MB). The server keeps the
+latest in `/data/agents/<frame id>-screenshot.png` and shows it on the frame's page
+with its time. It arrives within a minute; a screen that's off comes out black.
+
+## Reboot
+
+"Reboot" on the frame's page flags the frame; the reply to its next report has
+`"reboot": true` (once), and the agent runs `reboot` as root. The frame restarts
+within a minute and is back in about 30 s. Like any boot, it opens adb for 2 minutes,
+which is a way to get adb back for setup or restore. The agent never reboots on its own.
 
 ## Updates
 

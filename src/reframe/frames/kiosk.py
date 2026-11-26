@@ -111,6 +111,8 @@ def kiosk_settings(start_url: str, password: str) -> dict[str, Any]:
         "device.allow_microphone": False,
         "device.allow_location": False,
         "web_lifecycle.refresh_on_loading_error_interval_seconds": 30,
+        # Otherwise it reopens the last page it showed, not a changed home URL.
+        "web_lifecycle.reset_on_launch": True,
     }
 
 

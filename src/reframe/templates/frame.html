@@ -109,7 +109,8 @@
     <p>This frame runs the reframe slideshow in {{ frame.kiosk.app }}, which is its home screen.
       The Cozyla app is turned off. The reframe agent on the frame runs its screen and reports its health.</p>
     <table>
-      <tr><th>Slideshow</th><td><code>{{ frame.kiosk.start_url }}</code></td></tr>
+      <tr><th>Slideshow</th><td><code>{{ kiosk_home }}</code>{% if kiosk_home != frame.kiosk.start_url %}
+        <span class="muted">(played from the frame's own copy; keeps playing while this server is off)</span>{% endif %}</td></tr>
       <tr><th>Settings password</th><td><details><summary>Show</summary><code>{{ frame.kiosk.password }}</code></details></td></tr>
       <tr><th>Kiosk app</th><td>{{ frame.kiosk.app }} {{ frame.kiosk.app_version }}</td></tr>
       <tr><th>Agent</th><td>{{ frame.kiosk.agent_version or "not installed: use Update kiosk settings" }}</td></tr>
@@ -146,6 +147,24 @@
   {% if frame.is_kiosk %}
   <h2 style="margin-top:28px">Health</h2>
   {{ health_details(health) }}
+  {% if screenshot %}
+  <h2 id="screenshot" style="margin-top:28px">Screenshot</h2>
+  <form method="post" action="{{ url_for('frame_screenshot', frame_id=frame.id) }}">
+    <button class="secondary">Take a screenshot</button>
+    <span class="muted">{{ "Requested, waiting for the frame." if screenshot.requested else "Arrives within a minute (agent 0.3.0 or later; black while the screen is off)." }}</span>
+  </form>
+  {% if screenshot.at %}
+  <p class="muted">Taken {{ clock(screenshot.at) }}</p>
+  {% set src = url_for('frame_screenshot_png', frame_id=frame.id, t=screenshot.at|int) %}
+  <a href="{{ src }}"><img src="{{ src }}" alt="The frame's screen" style="max-width:240px;border:1px solid #ccc"></a>
+  {% endif %}
+  <h2 id="reboot" style="margin-top:28px">Reboot</h2>
+  <form method="post" action="{{ url_for('frame_reboot', frame_id=frame.id) }}"
+        onsubmit='return confirm({{ ("Reboot " ~ frame.name ~ "?") | tojson }})'>
+    <button class="secondary">Reboot</button>
+    <span class="muted">{{ "Reboot requested, waiting for the frame." if reboot_requested else "The frame restarts within a minute and is back in about 30 s; adb is open for 2 minutes after it boots, for setup or restore." }}</span>
+  </form>
+  {% endif %}
   {% endif %}
 
   {% if not is_new %}
