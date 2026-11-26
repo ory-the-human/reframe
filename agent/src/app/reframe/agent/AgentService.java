@@ -57,6 +57,7 @@ public class AgentService extends Service {
     private JSONArray fixes = new JSONArray();
     private String version = "?";
     private Watchdog watchdog;
+    private Updater updater;
 
     @Override
     public void onCreate() {
@@ -79,6 +80,7 @@ public class AgentService extends Service {
         wakeLock.acquire();
         screen = new Screen(power);
         config = loadConfig();
+        updater = new Updater(this, prefs());
 
         thread = new HandlerThread(TAG);
         thread.start();
@@ -216,6 +218,7 @@ public class AgentService extends Service {
                 throw e;
             }
             if (!reply.optString("config_version").equals(config.optString("version"))) fetchConfig(server, key);
+            updater.check(config.optJSONObject("agent"), server, key);
         } catch (Exception e) {
             Log.w(TAG, "server unreachable: " + e);
         }
@@ -250,6 +253,7 @@ public class AgentService extends Service {
         r.put("foreground", Stats.foreground());
         r.put("adb", watchdog.adbState);
         r.put("fixes", sending);
+        r.put("update_error", updater.error());
         return r;
     }
 

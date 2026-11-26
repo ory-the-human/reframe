@@ -122,6 +122,30 @@ The server keeps the latest report, 12 hours of history (temperature, load, memo
 screen) and the last 50 fixes per frame in `/data/agents/<frame id>.json`. A frame
 counts as offline after 3 minutes without a report.
 
+## Updates
+
+The agent updates itself from the server, without adb or internet. The config
+names the APK frames should run:
+
+```json
+"agent": {"version": "0.3.0", "sha256": "…", "url": "/agent/v1/apk"}
+```
+
+That's the release pinned in `kiosk.py`, or the `AGENT_APK` build (version
+`"local"`). When its sha256 differs from the agent's own installed APK, the agent
+downloads it from `GET /agent/v1/apk` (same key; the server fetches the pinned
+release once into `/data/cache`), checks the sha256 and installs it as root with
+`pm install -r -d`. Android then restarts the agent. A failed version is tried
+again after an hour at the earliest. Until it works, the report's `update_error`
+(`"Couldn't update to 0.3.0: …"`) is shown on the frame's page. To roll back, pin
+the previous release.
+
+- 0.2.0 frames can't update themselves: they get the first self-updating version
+  through kiosk setup.
+- Android only installs an update signed with the same key, so sign every release
+  with `private/agent.keystore`. A build signed with another key fails with
+  `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+
 ## What the frame offers (checked 2026-11-24)
 
 - **Root for apps:** the frame's `/system/xbin/su` gives root to any app's user id,

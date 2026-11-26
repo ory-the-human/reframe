@@ -9,6 +9,7 @@ the watchdog's recent fixes.
 
 import hashlib
 import json
+import os
 import secrets
 import time
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Any, Optional
 
 from .config import Config
 from .frames import registry
-from .frames.kiosk import COZYLA_PKG, KIOSK_PKG, kiosk_settings
+from .frames.kiosk import AGENT_APK_SHA256, AGENT_VERSION, COZYLA_PKG, KIOSK_PKG, kiosk_settings
 from .store import read_json, write_json
 
 API_VERSION = 1
@@ -38,6 +39,14 @@ def ensure_key(cfg: Config, frame: registry.FrameConfig) -> str:
     return frame.agent_key
 
 
+def update_target() -> dict[str, str]:
+    """The agent APK frames should run: a local build ($AGENT_APK) or the pinned release."""
+    local = os.environ.get("AGENT_APK")
+    if local:
+        return {"version": "local", "sha256": hashlib.sha256(Path(local).read_bytes()).hexdigest(), "url": "/agent/v1/apk"}
+    return {"version": AGENT_VERSION, "sha256": AGENT_APK_SHA256, "url": "/agent/v1/apk"}
+
+
 def agent_config(cfg: Config, frame: registry.FrameConfig) -> dict[str, Any]:
     """What the agent on this frame should do. `version` changes whenever the rest does."""
     body: dict[str, Any] = {
@@ -47,6 +56,7 @@ def agent_config(cfg: Config, frame: registry.FrameConfig) -> dict[str, Any]:
         "report_seconds": REPORT_SECONDS,
         "kiosk": None,
         "keep_disabled": [],
+        "agent": update_target(),
     }
     if frame.is_kiosk:
         settings = kiosk_settings(frame.kiosk["start_url"], "")
@@ -119,6 +129,7 @@ def health(cfg: Config, frame: registry.FrameConfig) -> Optional[dict[str, Any]]
         "online": age < STALE_SECONDS,
         "age": age,
         "agent_version": report.get("agent_version"),
+        "update_error": report.get("update_error"),
         "config_current": report.get("config_version") == agent_config(cfg, frame)["version"],
         "temperatures": temps,
         "temp": sample.get("temp"),

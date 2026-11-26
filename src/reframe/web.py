@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 import qrcode
 import qrcode.image.svg
 import requests
-from flask import Flask, Response, abort, flash, redirect, render_template, request, send_from_directory, url_for
+from flask import Flask, Response, abort, flash, redirect, render_template, request, send_file, send_from_directory, url_for
 from markupsafe import Markup
 
 from . import agent, config, frames, snapshots, sources, sync
@@ -558,6 +558,12 @@ def _agent_frame() -> tuple[config.Config, registry.FrameConfig]:
 def agent_config():
     cfg, frame = _agent_frame()
     return agent.agent_config(cfg, frame)
+
+
+@app.get("/agent/v1/apk")
+def agent_apk():
+    cfg, _ = _agent_frame()
+    return send_file(kiosk.agent_apk(cfg), mimetype="application/vnd.android.package-archive")
 
 
 @app.post("/agent/v1/report")
