@@ -23,7 +23,8 @@ scheduled), **idea** (worth recording, undecided).
 | Video conversion in the sync engine | done | New videos are re-encoded with ffmpeg: H.264 8-bit, fitted to the frame's `max_px` and cropped to sides a multiple of 32 ([cozyla-frame.md](cozyla-frame.md#video-on-the-frame-tested-2026-11-24)). `convert_videos`, default on, per frame. Kiosk frames now download at 1280. No tone mapping. |
 | Video conversion extras | later | Cap at 30 fps if the frame stutters at 60; HDR tone mapping (`zscale` + `tonemap`); stop re-downloading files ffmpeg can't read (now retried every sync). Share links don't need these: Google's copy is SDR and at most 30 fps. |
 | Kiosk over MQTT | idea | Webview Kiosk speaks MQTT (with Home Assistant discovery); connect it when a broker is configured. |
-| Unattended loop, health, alerts | next | PLAN.md phase 4. |
+| Unattended on the NAS | done | Published image (`v*` tags, amd64 and arm64) and a NixOS module ([deploy/nixos/reframe.nix](../deploy/nixos/reframe.nix)); the server syncs every `SYNC_MINUTES`. |
+| Alerts | later | Sync failures, an album link that stops working, a frame that stops reporting, runs hot or fills up. Leaning ntfy (one URL setting); email the alternative. |
 | Several frames per worker | done | Each with its own type, albums and display settings ([decisions.md](decisions.md), entry 5). |
 | Browser slideshow frame (`web`) | done | Full-screen slideshow for any browser, with shared display settings and per-screen overrides. |
 | Date taken caption | done | Each photo's date at its bottom (`display_date`). Shown in the time zone where it was taken. |
