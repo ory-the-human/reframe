@@ -34,8 +34,8 @@ class FrameConfig:
     # [{"id", "name"}]; empty means every album the source offers. Names are
     # kept for display so the dashboard needn't call the source.
     albums: list[dict[str, str]] = field(default_factory=list)
-    # Overrides of the display and screen defaults, keyed like
-    # config.DISPLAY_KEYS and config.SCREEN_KEYS.
+    # Overrides of the display, screen and convert_videos defaults, keyed like
+    # config.DISPLAY_KEYS, config.SCREEN_KEYS and "convert_videos".
     display: dict[str, str] = field(default_factory=dict)
     # cozyla_adb provisioned as a kiosk (frames/kiosk.py): the kiosk settings
     # password, the original state to restore, etc. Empty when not provisioned.
@@ -188,6 +188,10 @@ def validate(frame: FrameConfig) -> None:
 def display_for(cfg: Config, frame: FrameConfig) -> dict[str, object]:
     """The frame's display settings: its overrides on top of the defaults."""
     return display_values({**cfg.display_raw, **{k: v for k, v in frame.display.items() if v}})
+
+
+def converts_videos(cfg: Config, frame: FrameConfig) -> bool:
+    return (frame.display.get("convert_videos") or cfg.convert_videos) == "yes"
 
 
 def screen_for(cfg: Config, frame: FrameConfig) -> dict[str, object]:

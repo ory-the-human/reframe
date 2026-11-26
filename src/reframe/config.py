@@ -31,6 +31,8 @@ SETTINGS = {
     "screen_dark": ("SCREEN_DARK", "yes"),
     "screen_dark_lux": ("SCREEN_DARK_LUX", "5"),
     "screen_dark_seconds": ("SCREEN_DARK_SECONDS", "30"),
+    # Re-encode videos for each frame's screen as they're synced; frames can override it.
+    "convert_videos": ("CONVERT_VIDEOS", "yes"),
     # Minutes between syncs; 0 turns the automatic sync off.
     "sync_minutes": ("SYNC_MINUTES", "60"),
 }
@@ -51,6 +53,8 @@ DISPLAY_CHOICES = {
     "display_date": {"yes": "Show the date each photo was taken", "no": "Don't show it"},
 }
 
+
+VIDEO_CHOICES = {"yes": "Convert them for the frame's screen", "no": "Copy them as downloaded"}
 
 SCREEN_KEYS = ("screen_schedule", "screen_dark", "screen_dark_lux", "screen_dark_seconds")
 
@@ -139,6 +143,7 @@ class Config:
     screen_dark: str
     screen_dark_lux: str
     screen_dark_seconds: str
+    convert_videos: str
     sync_minutes: str
 
     @property

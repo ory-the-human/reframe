@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from reframe import config, sync
@@ -18,12 +19,14 @@ class FakeSource:
         self.complete = True
         self.fail: set[str] = set()
         self.created: dict[str, str] = {}
+        self.videos: set[str] = set()
 
     def albums(self):
         return [Album(a, a.upper()) for a in self.content]
 
     def list_album(self, album):
-        items = [MediaItem(id=i, mime_type="image/jpeg", created=self.created.get(i)) for i in self.content[album.id]]
+        items = [MediaItem(id=i, mime_type="video/mp4" if i in self.videos else "image/jpeg", created=self.created.get(i))
+                 for i in self.content[album.id]]
         return Listing(album=album, items=items, complete=self.complete)
 
     def fetch(self, item, dest, max_px):
@@ -142,6 +145,23 @@ class SyncTest(unittest.TestCase):
         self.sync()
         self.assertEqual(self.files("x"), ["1"])
         self.assertEqual(self.files("y"), ["1", "2"])
+
+    def test_videos_converted_only_where_on(self):
+        self.frame("on")
+        registry.add(self.cfg, "off", "folder", folder=str(Path(self.tmp.name) / "off"), display={"convert_videos": "no"})
+        self.source.content = {"a": ["v"]}
+        self.source.videos = {"v"}
+
+        def fake(src, max_px):
+            dest = src.with_suffix(".conv.mp4")
+            dest.write_text("converted")
+            return dest
+
+        with mock.patch.object(sync.video, "convert", side_effect=fake) as convert:
+            self.sync()
+        convert.assert_called_once()
+        self.assertEqual((Path(self.tmp.name) / "on" / "v.mp4").read_text(), "converted")
+        self.assertEqual((Path(self.tmp.name) / "off" / "v.mp4").read_text(), "v")
 
     def test_failed_download_is_retried(self):
         self.frame("f")

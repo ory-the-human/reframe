@@ -46,6 +46,15 @@
       <p class="muted">The source has no albums yet. This frame will show every album.</p>
     {% endif %}
 
+    <h2 style="margin-top:24px">Videos</h2>
+    <label for="convert_videos">Videos</label>
+    <select id="convert_videos" name="convert_videos">
+      <option value="">Default ({{ video_choices[cfg.convert_videos] }})</option>
+      {% for value, text in video_choices.items() %}<option value="{{ value }}" {{ "selected" if frame.display.get("convert_videos") == value }}>{{ text }}</option>{% endfor %}
+    </select>
+    <p class="muted">Re-encodes videos to H.264 sized for the frame's screen, so the Cozyla frame plays them
+      without a green bar. Applies to videos synced from now on; videos already on a frame stay as they are.</p>
+
     {% if frame.shows_slideshow %}
     <h2 style="margin-top:24px">Display</h2>
     <p class="muted">Leave a setting on "Default" to use the one in <a href="{{ url_for('settings') }}">settings</a>.</p>

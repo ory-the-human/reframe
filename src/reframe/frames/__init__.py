@@ -4,7 +4,7 @@ from ..config import Config
 from .base import Frame, FrameError
 from .cozyla_adb import CozylaAdbFrame
 from .folder import FolderFrame
-from .registry import KINDS, FrameConfig, display_for, load_all, screen_for, web_media_dir
+from .registry import KINDS, FrameConfig, converts_videos, display_for, load_all, screen_for, web_media_dir
 from .web import WebFrame
 
 DEFAULT_MAX_PX = 1920
@@ -13,8 +13,8 @@ DEFAULT_MAX_PX = 1920
 def build(cfg: Config, frame: FrameConfig) -> Frame:
     """The adapter for a configured frame. Cheap: nothing connects until it's used."""
     if frame.is_kiosk:
-        # The kiosk plays the slideshow this server hosts.
-        return WebFrame(web_media_dir(cfg.data_dir, frame.id))
+        # The kiosk plays the slideshow this server hosts, on the Cozyla panel.
+        return WebFrame(web_media_dir(cfg.data_dir, frame.id), max_px=CozylaAdbFrame.max_px)
     if frame.kind == "cozyla_adb":
         return CozylaAdbFrame(frame.address)
     if frame.kind == "folder":
@@ -29,4 +29,4 @@ def largest_max_px(cfg: Config) -> int:
     return max((build(cfg, f).max_px for f in load_all(cfg)), default=DEFAULT_MAX_PX)
 
 
-__all__ = ["Frame", "FrameConfig", "FrameError", "KINDS", "build", "display_for", "largest_max_px", "load_all", "screen_for"]
+__all__ = ["Frame", "FrameConfig", "FrameError", "KINDS", "build", "converts_videos", "display_for", "largest_max_px", "load_all", "screen_for"]

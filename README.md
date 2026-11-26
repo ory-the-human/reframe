@@ -58,7 +58,9 @@ Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
    what a sync would change without changing anything. New photos are copied to
    the frames; a photo that leaves an album is removed after it's missing from two
    complete listings in a row (longer if many leave at once), and an album a frame
-   stops showing is removed from it at once.
+   stops showing is removed from it at once. New videos are re-encoded for each
+   frame's screen (H.264, sides a multiple of 32, which the Cozyla frame needs);
+   turn this off in Settings → Videos or per frame.
 4. **Listing test** (optional): lists every album in full and saves a snapshot to
    `data/`. Set "Download samples" above 0 to fetch a few files sized for the
    frame. Run it again after adding or removing a photo; the dashboard shows the
@@ -155,6 +157,7 @@ docker compose run --rm reframe frames add "Living room" --type cozyla_adb --add
 docker compose run --rm reframe frames show Kitchen             # details and slideshow link
 docker compose run --rm reframe frames edit Kitchen --interval 10 --fill black --album ID
 docker compose run --rm reframe frames edit Kitchen --interval ""   # back to the default
+docker compose run --rm reframe frames edit Kitchen --convert-videos no  # copy videos as downloaded
 docker compose run --rm reframe settings                        # list settings
 docker compose run --rm reframe settings set public_url http://192.168.1.10:1992
 docker compose run --rm reframe settings unset display_layout   # back to .env or the default

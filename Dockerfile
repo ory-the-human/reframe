@@ -5,6 +5,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends adb \
     && rm -rf /var/lib/apt/lists/*
 
+# ffmpeg converts videos for the frames; a static build is a quarter of Debian's package.
+COPY --from=mwader/static-ffmpeg:7.1@sha256:a8090df5f5608daef387e1b2e93b98aaacb4d92153ad904e7d715c725724fca4 /ffmpeg /usr/local/bin/
+
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src

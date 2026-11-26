@@ -59,6 +59,14 @@
     <p class="muted">"Follow the screen" uses the orientation the browser reports. Pick one when a
       screen is mounted sideways but the browser doesn't rotate; the slideshow then rotates itself.</p>
 
+    <h2 style="margin-top:24px">Videos</h2>
+    <label for="convert_videos">Videos</label>
+    <select id="convert_videos" name="convert_videos">
+      {% for value, text in video_choices.items() %}<option value="{{ value }}" {{ "selected" if value == cfg.convert_videos }}>{{ text }}</option>{% endfor %}
+    </select>
+    <p class="muted">Re-encodes videos to H.264 sized for the frame's screen, so the Cozyla frame plays them
+      without a green bar. Applies to videos synced from now on; videos already on a frame stay as they are.</p>
+
     <h2 style="margin-top:24px">Screen</h2>
     <p class="muted">Defaults for kiosk frames, applied by the agent app on each frame. Each frame can
       override them on its own page.</p>

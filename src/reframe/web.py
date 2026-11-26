@@ -128,7 +128,7 @@ def index():
 def settings():
     cfg = config.load()
     if request.method == "POST":
-        fields = ("source", "client_id", "device_name", "public_url", "sync_minutes", *config.DISPLAY_KEYS)
+        fields = ("source", "client_id", "device_name", "public_url", "sync_minutes", "convert_videos", *config.DISPLAY_KEYS)
         updates = {k: request.form.get(k, "").strip() for k in fields}
         try:
             updates.update({k: "" for k in config.SCREEN_KEYS} | _screen_from_form())
@@ -146,6 +146,7 @@ def settings():
         cfg=cfg,
         source_kinds=sources.KINDS,
         display_choices=config.DISPLAY_CHOICES,
+        video_choices=config.VIDEO_CHOICES,
         screen_choices=config.SCREEN_CHOICES,
         albums=share_link.saved_albums(cfg) if cfg.source == "share_link" else None,
     )
@@ -334,7 +335,7 @@ def _frame_from_form(frame: registry.FrameConfig) -> registry.FrameConfig:
     frame.address = form.get("address", "").strip()
     frame.folder = form.get("folder", "").strip()
     frame.albums = [{"id": a, "name": form.get(f"album_name_{a}", a)} for a in form.getlist("album")]
-    frame.display = {k: form.get(k, "").strip() for k in config.DISPLAY_KEYS if form.get(k, "").strip()}
+    frame.display = {k: form.get(k, "").strip() for k in (*config.DISPLAY_KEYS, "convert_videos") if form.get(k, "").strip()}
     if frame.is_kiosk:
         frame.display.update(_screen_from_form())
     return frame
@@ -357,6 +358,7 @@ def _frame_form(cfg: config.Config, frame: registry.FrameConfig, is_new: bool):
         albums=albums,
         albums_error=albums_error,
         display_choices=config.DISPLAY_CHOICES,
+        video_choices=config.VIDEO_CHOICES,
         screen_choices=config.SCREEN_CHOICES,
         screen=frames.screen_for(cfg, frame),
         health=agent.health(cfg, frame) if frame.agent_key else None,

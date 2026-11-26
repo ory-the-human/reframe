@@ -194,8 +194,10 @@ def _check_display(key: str, value: str) -> None:
     if key == "display_interval":
         if not value.isdigit() or not 3 <= int(value) <= 3600:
             sys.exit("interval: give seconds per photo, 3 to 3600.")
-    elif value not in config.DISPLAY_CHOICES[key]:
-        sys.exit(f"{key[len('display_'):]}: choose one of {', '.join(config.DISPLAY_CHOICES[key])}.")
+    else:
+        choices = {**config.DISPLAY_CHOICES, "convert_videos": config.VIDEO_CHOICES}[key]
+        if value not in choices:
+            sys.exit(f"{key.removeprefix('display_')}: choose one of {', '.join(choices)}.")
 
 
 def _edit_frame(cfg: config.Config, f: registry.FrameConfig, args: argparse.Namespace) -> None:
@@ -212,7 +214,7 @@ def _edit_frame(cfg: config.Config, f: registry.FrameConfig, args: argparse.Name
     screen = {flag: key for flag, key in SCREEN_FLAGS.items() if getattr(args, flag) is not None}
     if screen and not f.is_kiosk:
         sys.exit("Screen settings are for kiosk frames; set one up with `reframe kiosk setup`.")
-    for flag, key in {**DISPLAY_FLAGS, **screen}.items():
+    for flag, key in {**DISPLAY_FLAGS, **screen, "convert_videos": "convert_videos"}.items():
         value = getattr(args, flag)
         if value is None:
             continue
@@ -238,6 +240,7 @@ def _show_frame(cfg: config.Config, f: registry.FrameConfig) -> None:
     print(f"{'type':>12}: {registry.KINDS.get(f.kind, f.kind)}")
     print(f"{'target':>12}: {f.target}")
     print(f"{'albums':>12}: {', '.join(a['name'] for a in f.albums) or 'all'}")
+    print(f"{'videos':>12}: {'converted' if frames.converts_videos(cfg, f) else 'as downloaded'}{' (this frame)' if f.display.get('convert_videos') else ''}")
     if f.shows_slideshow:
         effective = frames.display_for(cfg, f)
         for flag, key in DISPLAY_FLAGS.items():
@@ -421,7 +424,7 @@ def cmd_settings(cfg: config.Config, args: argparse.Namespace) -> None:
         if key not in config.SETTINGS:
             sys.exit(f"Unknown setting {key!r}; settings: {', '.join(config.SETTINGS)}.")
         value = args.value if args.action == "set" else ""
-        if key in config.DISPLAY_KEYS:
+        if key in config.DISPLAY_KEYS or key == "convert_videos":
             _check_display(key, value)
         elif key in config.SCREEN_KEYS:
             _check_screen(key, value)
@@ -506,6 +509,7 @@ def main() -> None:
     for flag, key in DISPLAY_FLAGS.items():
         if flag != "interval":
             fp.add_argument(f"--{flag}", metavar="|".join(config.DISPLAY_CHOICES[key]))
+    fp.add_argument("--convert-videos", metavar="yes|no", help="re-encode new videos for the frame's screen")
     fp.add_argument("--schedule", metavar="always|HH:MM-HH:MM", help="kiosk: hours the screen is off, e.g. 23:00-07:00")
     fp.add_argument("--dark", metavar="yes|no", help="kiosk: turn the screen off when the room is dark")
     fp.add_argument("--dark-lux", metavar="LUX", help="kiosk: below this the room counts as dark")

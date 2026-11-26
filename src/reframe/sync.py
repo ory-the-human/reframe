@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
-from . import frames as frames_mod
+from . import frames as frames_mod, video
 from .config import Config
 from .frames import FrameConfig, FrameError
 from .sources import Album, Listing, MediaItem, Source, get_source
@@ -163,7 +163,7 @@ def _sync(cfg: Config, db: sqlite3.Connection, source: Source, dry_run: bool, lo
         adapter = frames_mod.build(cfg, frame)
         result = FrameResult(frame.name)
         try:
-            _sync_frame(db, source, frame, adapter, albums, listings, result, dry_run, log)
+            _sync_frame(db, source, frame, adapter, albums, listings, result, dry_run, frames_mod.converts_videos(cfg, frame), log)
         except FrameError as e:
             # Typically unreachable: try again next run, with the state as far as it got.
             result.error = str(e)
@@ -178,7 +178,7 @@ def _sync(cfg: Config, db: sqlite3.Connection, source: Source, dry_run: bool, lo
 
 
 def _sync_frame(db, source, frame: FrameConfig, adapter, albums: dict[str, Album], listings, result: FrameResult,
-                dry_run: bool, log: Log) -> None:
+                dry_run: bool, convert: bool, log: Log) -> None:
     now = time.time()
     rows = db.execute("SELECT * FROM items WHERE frame_id = ?", (frame.id,)).fetchall()
     paths = {r["media_id"]: r["frame_path"] for r in rows}  # files already on this frame
@@ -224,7 +224,7 @@ def _sync_frame(db, source, frame: FrameConfig, adapter, albums: dict[str, Album
             path = paths.get(item.id)
             if path is None:
                 try:
-                    path = _copy(source, adapter, item, dry_run)
+                    path = _copy(source, adapter, item, dry_run, convert)
                 except FrameError:
                     raise
                 except Exception as e:
@@ -261,13 +261,15 @@ def _sync_frame(db, source, frame: FrameConfig, adapter, albums: dict[str, Album
                 + (f", {res.failed} failed" if res.failed else "") + (f" ({res.note})" if res.note else ""))
 
 
-def _copy(source: Source, adapter, item: MediaItem, dry_run: bool) -> str:
+def _copy(source: Source, adapter, item: MediaItem, dry_run: bool, convert: bool) -> str:
     name = file_name(item)
     if dry_run:
         return name
     with tempfile.TemporaryDirectory() as tmp:
         local = Path(tmp) / name
         source.fetch(item, local, adapter.max_px)
+        if convert and item.is_video:
+            local = video.convert(local, adapter.max_px)
         return adapter.put(local, name)
 
 
