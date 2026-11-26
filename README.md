@@ -133,8 +133,6 @@ unplug the frame, plug it back in, and start within those 2 minutes; adb stays
 open while reframe is connected. To try a local agent build, set `AGENT_APK` to it
 (`agent/build.sh`).
 
-`reframe frame-put FRAME photo.jpg …` copies files to a frame by hand.
-
 ### CLI
 
 The same steps are available on the command line, which is handy when testing
@@ -162,7 +160,6 @@ docker compose run --rm reframe settings set public_url http://192.168.1.10:1992
 docker compose run --rm reframe settings unset display_layout   # back to .env or the default
 docker compose run --rm reframe signout [--forget-device]       # google_ambient
 docker compose run --rm reframe frame-check                     # all frames, or name one
-docker compose run --rm reframe frame-put Kitchen /data/samples/*.jpg
 docker compose run --rm reframe kiosk setup "Living room" --url http://192.168.1.10:1992
 docker compose run --rm reframe kiosk show "Living room"       # settings password
 docker compose run --rm reframe kiosk restore "Living room"    # back to the Cozyla app

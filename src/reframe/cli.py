@@ -332,19 +332,6 @@ def cmd_frame_check(cfg: config.Config, args: argparse.Namespace) -> None:
             print(f"     error: {e}")
 
 
-def cmd_frame_put(cfg: config.Config, args: argparse.Namespace) -> None:
-    """Copy local files to a frame, for testing before the sync engine exists."""
-    f = registry.find(frames.load_all(cfg), args.frame)
-    adapter = frames.build(cfg, f)
-    try:
-        for name in args.files:
-            path = Path(name)
-            print(f"{path.name} -> {adapter.put(path, path.name)}")
-    finally:
-        if hasattr(adapter, "close"):
-            adapter.close()
-
-
 def cmd_albums(cfg: config.Config, args: argparse.Namespace) -> None:
     """Shared albums (the share_link source)."""
     if cfg.source != "share_link":
@@ -572,11 +559,6 @@ def main() -> None:
     p = sub.add_parser("frame-check", help="connect to frames and print their details")
     p.add_argument("frame", nargs="?", help="frame name or id; default all")
     p.set_defaults(func=cmd_frame_check)
-
-    p = sub.add_parser("frame-put", help="copy local files to a frame (for testing)")
-    p.add_argument("frame", help="frame name or id")
-    p.add_argument("files", nargs="+")
-    p.set_defaults(func=cmd_frame_put)
 
     args = parser.parse_args()
     try:

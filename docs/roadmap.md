@@ -13,7 +13,7 @@ scheduled), **idea** (worth recording, undecided).
 |---|---|---|
 | Second source: Google Photos share link | done | `share_link`, the default: shared albums added by their links in Settings → Albums or with `reframe albums`, kept in `/data/albums.json`. The link is a secret and Google can change the page, so anything unexpected makes a listing incomplete and nothing is removed. Immich stays an option for later. |
 | Sync engine (pass-through, safe removal) | done | PLAN.md phase 2. Uses only the `Source` and `Frame` interfaces. The web server runs it every `SYNC_MINUTES`; Sync now and the last run's results are on the dashboard, and `reframe sync [--dry-run]` runs it by hand. |
-| Remove `reframe frame-put` | with the sync engine | A testing tool from before the sync engine, and it won't be used after it: the sync engine calls the same `Frame.put` itself. Remove the command and its README lines; keep `frame-check`. |
+| Remove `reframe frame-put` | done | A testing tool from before the sync engine, which calls the same `Frame.put` itself. `frame-check` stays. |
 | Show synced photos in the Cozyla app | idea | Works only with the frame kept offline ([cozyla-frame.md](cozyla-frame.md)); the kiosk below replaced it. |
 | Cozyla frames as kiosks | done | One-click setup and exact restore from the frame's page ([decisions.md](decisions.md), entry 7). |
 | Store kiosk photos on the frame | next | Push the slideshow page and files to the frame, so it keeps playing with the server off. |
@@ -24,7 +24,7 @@ scheduled), **idea** (worth recording, undecided).
 | Unattended loop, health, alerts | next | PLAN.md phase 4. |
 | Several frames per worker | done | Each with its own type, albums and display settings ([decisions.md](decisions.md), entry 5). |
 | Browser slideshow frame (`web`) | done | Full-screen slideshow for any browser, with shared display settings and per-screen overrides. |
-| Date taken caption | done | Each photo's date at its bottom (`display_date`). Shown in the screen's own time zone, not where the photo was taken. |
+| Date taken caption | done | Each photo's date at its bottom (`display_date`). Shown in the time zone where it was taken. |
 
 ## Google Photos for everyone (hosted auth)
 
