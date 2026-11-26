@@ -9,6 +9,7 @@ the watchdog's recent fixes.
 
 import hashlib
 import json
+import os
 import secrets
 import time
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Any, Optional
 
 from .config import Config
 from .frames import registry
-from .frames.kiosk import COZYLA_PKG, KIOSK_PKG, kiosk_settings
+from .frames.kiosk import AGENT_APK_SHA256, AGENT_VERSION, COZYLA_PKG, KIOSK_PKG, kiosk_settings
 from .store import read_json, write_json
 
 API_VERSION = 1
@@ -25,6 +26,8 @@ STALE_SECONDS = 3 * REPORT_SECONDS
 MAX_REPORT_BYTES = 64 * 1024
 HISTORY = 720  # samples: 12 hours at one a minute
 FIXES = 50
+LOCAL_HOST = "127.0.0.1"
+MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024
 
 
 def _file(cfg: Config, frame_id: str) -> Path:
@@ -38,6 +41,14 @@ def ensure_key(cfg: Config, frame: registry.FrameConfig) -> str:
     return frame.agent_key
 
 
+def update_target() -> dict[str, str]:
+    """The agent APK frames should run: a local build ($AGENT_APK) or the pinned release."""
+    local = os.environ.get("AGENT_APK")
+    if local:
+        return {"version": "local", "sha256": hashlib.sha256(Path(local).read_bytes()).hexdigest(), "url": "/agent/v1/apk"}
+    return {"version": AGENT_VERSION, "sha256": AGENT_APK_SHA256, "url": "/agent/v1/apk"}
+
+
 def agent_config(cfg: Config, frame: registry.FrameConfig) -> dict[str, Any]:
     """What the agent on this frame should do. `version` changes whenever the rest does."""
     body: dict[str, Any] = {
@@ -47,17 +58,70 @@ def agent_config(cfg: Config, frame: registry.FrameConfig) -> dict[str, Any]:
         "report_seconds": REPORT_SECONDS,
         "kiosk": None,
         "keep_disabled": [],
+        "agent": update_target(),
     }
     if frame.is_kiosk:
-        settings = kiosk_settings(frame.kiosk["start_url"], "")
+        start_url = home_url(cfg, frame)
+        settings = kiosk_settings(start_url, "")
         # The agent checks the kiosk's settings file, which it can read anyway; the
         # password isn't needed for that.
         settings.pop("device.custom_auth_password")
-        body["kiosk"] = {"package": KIOSK_PKG, "home_url": frame.kiosk["start_url"], "settings": settings}
+        body["kiosk"] = {"package": KIOSK_PKG, "home_url": start_url, "settings": settings}
         if frame.kiosk.get("original", {}).get("cozyla_installed"):
             body["keep_disabled"] = [COZYLA_PKG]
     body["version"] = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
     return body
+
+
+def home_url(cfg: Config, frame: registry.FrameConfig) -> str:
+    """The kiosk's home: the agent's own copy once it reports it can serve one, else this server."""
+    port = ((load(cfg, frame.id) or {}).get("latest") or {}).get("local_port")
+    if isinstance(port, int) and not isinstance(port, bool):
+        return f"http://{LOCAL_HOST}:{port}/show/{frame.key}"
+    return frame.kiosk["start_url"]
+
+
+def screenshot_file(cfg: Config, frame_id: str) -> Path:
+    return _file(cfg, frame_id).with_name(f"{frame_id}-screenshot.png")
+
+
+def _request_file(cfg: Config, frame_id: str, what: str) -> Path:
+    return _file(cfg, frame_id).with_name(f"{frame_id}-{what}-request")
+
+
+def request(cfg: Config, frame: registry.FrameConfig, what: str) -> None:
+    path = _request_file(cfg, frame.id, what)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+
+
+def requested(cfg: Config, frame: registry.FrameConfig, what: str) -> bool:
+    return _request_file(cfg, frame.id, what).exists()
+
+
+def wanted(cfg: Config, frame: registry.FrameConfig, what: str) -> bool:
+    """True once per request: the report reply asks the agent for it."""
+    try:
+        _request_file(cfg, frame.id, what).unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def save_screenshot(cfg: Config, frame: registry.FrameConfig, data: bytes) -> None:
+    path = screenshot_file(cfg, frame.id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(path)
+
+
+def screenshot(cfg: Config, frame: registry.FrameConfig) -> dict[str, Any]:
+    path = screenshot_file(cfg, frame.id)
+    return {
+        "at": path.stat().st_mtime if path.exists() else None,
+        "requested": requested(cfg, frame, "screenshot"),
+    }
 
 
 def load(cfg: Config, frame_id: str) -> Optional[dict[str, Any]]:
@@ -119,6 +183,7 @@ def health(cfg: Config, frame: registry.FrameConfig) -> Optional[dict[str, Any]]
         "online": age < STALE_SECONDS,
         "age": age,
         "agent_version": report.get("agent_version"),
+        "update_error": report.get("update_error"),
         "config_current": report.get("config_version") == agent_config(cfg, frame)["version"],
         "temperatures": temps,
         "temp": sample.get("temp"),

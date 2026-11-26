@@ -34,7 +34,7 @@
   {% if h.foreground %}<tr><th>On screen</th><td><code>{{ h.foreground }}</code></td></tr>{% endif %}
   {% if h.adb %}<tr><th>adb</th><td>{{ adb_states[h.adb] }}</td></tr>{% endif %}
   {% if h.time %}<tr><th>Frame's clock</th><td>{{ h.time }}{% if h.timezone %} ({{ h.timezone }}){% endif %}</td></tr>{% endif %}
-  <tr><th>Agent</th><td>{{ h.agent_version or "?" }}{% if not h.config_current %} <span class="warn">· hasn't picked up the latest settings yet</span>{% endif %}</td></tr>
+  <tr><th>Agent</th><td>{{ h.agent_version or "?" }}{% if not h.config_current %} <span class="warn">· hasn't picked up the latest settings yet</span>{% endif %}{% if h.update_error %} <span class="warn">· {{ h.update_error }}</span>{% endif %}</td></tr>
 </table>
 <div class="row" style="margin-top:10px">
   {{ spark(h, "temp", "Temperature", " °C") }}

@@ -57,6 +57,8 @@ public class AgentService extends Service {
     private JSONArray fixes = new JSONArray();
     private String version = "?";
     private Watchdog watchdog;
+    private Updater updater;
+    private Mirror mirror;
 
     @Override
     public void onCreate() {
@@ -79,6 +81,7 @@ public class AgentService extends Service {
         wakeLock.acquire();
         screen = new Screen(power);
         config = loadConfig();
+        updater = new Updater(this, prefs());
 
         thread = new HandlerThread(TAG);
         thread.start();
@@ -126,6 +129,9 @@ public class AgentService extends Service {
                 watchdogHandler.postDelayed(this, Watchdog.CHECK_MS);
             }
         }, Watchdog.CHECK_MS);
+        mirror = new Mirror(this);
+        new Thread(mirror, TAG + "-mirror").start();
+        new LocalServer(mirror).start();
         handler.post(tick);
         Log.i(TAG, "agent " + version + " started");
     }
@@ -215,7 +221,10 @@ public class AgentService extends Service {
                 }
                 throw e;
             }
+            if (reply.optBoolean("screenshot")) Screenshot.send(server, key);
+            if (reply.optBoolean("reboot")) Root.run("reboot");
             if (!reply.optString("config_version").equals(config.optString("version"))) fetchConfig(server, key);
+            updater.check(config.optJSONObject("agent"), server, key);
         } catch (Exception e) {
             Log.w(TAG, "server unreachable: " + e);
         }
@@ -250,6 +259,8 @@ public class AgentService extends Service {
         r.put("foreground", Stats.foreground());
         r.put("adb", watchdog.adbState);
         r.put("fixes", sending);
+        r.put("update_error", updater.error());
+        if (mirror.ready()) r.put("local_port", LocalServer.PORT);
         return r;
     }
 
