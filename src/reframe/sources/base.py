@@ -40,6 +40,9 @@ class Listing:
     # False when the source couldn't confirm it saw every item (page cap hit,
     # partial error). Removals must never be inferred from an incomplete listing.
     complete: bool
+    # True when the listing is the album itself (a directory scan), so items that
+    # leave it are removed at once, without the grace runs.
+    trusted: bool = False
 
 
 class Source(Protocol):

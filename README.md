@@ -48,7 +48,13 @@ The CLI commands below run there as `sudo reframe …` instead of
 Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
 
 1. **Settings → Albums**: paste each album's share link, with a name if you want
-   another than the album's title (or `reframe albums add LINK --name …`).
+   another than the album's title (or `reframe albums add LINK --name …`). Or
+   create a **local album** by name: it lives on the server in
+   `data/albums/<album id>/`, whatever the source. On its page, upload photos and
+   videos (also from a phone's browser) and delete them; files copied into its
+   folder by hand show up too. A file deleted from a local album leaves the frames
+   at the next sync, and removing the album deletes its files. Rename an album by
+   editing its name in the list.
 2. **Frames → Add a frame** for each screen: its type, the albums it shows (none
    ticked means all) and, for slideshows, its display settings. **Check**
    confirms the worker can reach it. For `cozyla_adb`, a Cozyla connects without
@@ -150,7 +156,7 @@ The same steps are available on the command line, which is handy when testing
 from a laptop:
 
 ```sh
-docker compose run --rm reframe albums                          # shared albums: id and name
+docker compose run --rm reframe albums                          # shared and local albums: id and name
 docker compose run --rm reframe albums add https://photos.app.goo.gl/… --name "Holidays"
 docker compose run --rm reframe albums rename Holidays "Summer"
 docker compose run --rm reframe albums remove Summer            # its photos leave the frames at the next sync
@@ -189,8 +195,9 @@ DATA_DIR=./data .venv/bin/reframe web --port 1992
 ## Notes
 
 - Photos are pass-through: the sync streams each one to the frame and keeps
-  only state on the NAS, except for `web` and kiosk frames, which play from the
-  server and keep their photos in `data/frames/<id>/`. `data/samples/` is only for
+  only state on the NAS, except for local albums (`data/albums/<id>/`) and `web`
+  and kiosk frames, which play from the server and keep their photos in
+  `data/frames/<id>/`. `data/samples/` is only for
   the listing test.
 - `data/` holds the album share links, OAuth tokens and the OAuth client secret. It's git-ignored and
   written with `0600` permissions.

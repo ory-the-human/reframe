@@ -9,7 +9,8 @@ Removals are deliberately slow, since a wrong one deletes a photo from a frame:
 only complete listings count, an item must be missing from REMOVE_AFTER_RUNS of
 them in a row, and if that would remove more than MAX_REMOVE_FRACTION of an album
 at once, it waits MASS_EXTRA_RUNS more. Albums a frame stops showing are removed
-from it straight away: that's the owner's choice, not a listing to doubt.
+from it straight away: that's the owner's choice, not a listing to doubt. So are
+items that leave a trusted listing (a local album's folder).
 """
 
 import fcntl
@@ -239,15 +240,15 @@ def _sync_frame(db, source, frame: FrameConfig, adapter, albums: dict[str, Album
         listed = {i.id for i in listing.items}
         missing = [r for m, r in have.items() if m not in listed]
         # An empty listing of an album we hold photos of is more likely a glitch.
-        if not listing.complete or (not listing.items and have):
+        if not listing.complete or (not listing.items and have and not listing.trusted):
             res.note = "listing incomplete: nothing removed"
             res.waiting = len(missing)
             continue
         for r in missing:
             db.execute("UPDATE items SET missing_runs = missing_runs + 1 WHERE frame_id = ? AND album_id = ? AND media_id = ?",
                        (frame.id, album_id, r["media_id"]))
-        due = [r for r in missing if r["missing_runs"] + 1 >= REMOVE_AFTER_RUNS]
-        if len(due) > MAX_REMOVE_FRACTION * len(have):
+        due = missing if listing.trusted else [r for r in missing if r["missing_runs"] + 1 >= REMOVE_AFTER_RUNS]
+        if not listing.trusted and len(due) > MAX_REMOVE_FRACTION * len(have):
             sure = [r for r in due if r["missing_runs"] + 1 >= REMOVE_AFTER_RUNS + MASS_EXTRA_RUNS]
             if len(sure) < len(due):
                 res.note = "many photos left at once: waiting to be sure"

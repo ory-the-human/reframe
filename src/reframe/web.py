@@ -23,7 +23,7 @@ from markupsafe import Markup
 from . import agent, config, frames, snapshots, sources, sync
 from .frames import kiosk, registry
 from .frames import web as web_frame
-from .sources import share_link
+from .sources import local, share_link
 from .sources.google_ambient.api import AmbientClient
 from .sources.google_ambient.auth import TokenStore
 from .sources.google_ambient.login import LoginFlow
@@ -148,7 +148,7 @@ def settings():
         display_choices=config.DISPLAY_CHOICES,
         video_choices=config.VIDEO_CHOICES,
         screen_choices=config.SCREEN_CHOICES,
-        albums=share_link.saved_albums(cfg) if cfg.source == "share_link" else None,
+        albums=local.saved_albums(cfg) + (share_link.saved_albums(cfg) if cfg.source == "share_link" else []),
     )
 
 
@@ -162,14 +162,74 @@ def album_add():
     return redirect(url_for("settings") + "#albums")
 
 
+@app.post("/albums/new")
+def album_new():
+    a = local.add(config.load(), request.form.get("name", ""))
+    flash(f"Added {a['name']}. Upload its photos here.", "ok")
+    return redirect(url_for("album_page", album_id=a["id"]))
+
+
+def _albums_module(album_id: str):
+    return local if album_id.startswith(local.PREFIX) else share_link
+
+
+@app.post("/albums/<album_id>/rename")
+def album_rename(album_id: str):
+    try:
+        _albums_module(album_id).rename(config.load(), album_id, request.form.get("name", ""))
+        flash("Renamed.", "ok")
+    except (share_link.ShareLinkError, local.LocalAlbumError) as e:
+        flash(str(e), "error")
+    return redirect(url_for("settings") + "#albums")
+
+
 @app.post("/albums/<album_id>/remove")
 def album_remove(album_id: str):
     try:
-        a = share_link.remove(config.load(), album_id)
+        a = _albums_module(album_id).remove(config.load(), album_id)
         flash(f"Removed {a['name']}. The next sync takes its photos off the frames.", "ok")
-    except share_link.ShareLinkError as e:
+    except (share_link.ShareLinkError, local.LocalAlbumError) as e:
         flash(str(e), "error")
     return redirect(url_for("settings") + "#albums")
+
+
+def _local_album(album_id: str) -> tuple[config.Config, dict[str, str]]:
+    cfg = config.load()
+    try:
+        return cfg, local.find(cfg, album_id)
+    except local.LocalAlbumError:
+        abort(404)
+
+
+@app.get("/albums/<album_id>")
+def album_page(album_id: str):
+    cfg, album = _local_album(album_id)
+    items = [{"name": p.name, "video": mime.startswith("video/")} for p, mime in local.files(cfg, album_id)]
+    return render_template("album.html", album=album, items=items)
+
+
+@app.post("/albums/<album_id>/upload")
+def album_upload(album_id: str):
+    cfg, album = _local_album(album_id)
+    uploads = [f for f in request.files.getlist("files") if f.filename and local.media_type(f.filename)]
+    for f in uploads:
+        local.save_upload(cfg, album_id, f)
+    flash(f"Uploaded {len(uploads)} files. Frames get them at the next sync.", "ok")
+    return redirect(url_for("album_page", album_id=album_id))
+
+
+@app.get("/albums/<album_id>/files/<name>")
+def album_file(album_id: str, name: str):
+    cfg, _ = _local_album(album_id)
+    return send_from_directory(local.album_dir(cfg, album_id), name)
+
+
+@app.post("/albums/<album_id>/files/<name>/delete")
+def album_file_delete(album_id: str, name: str):
+    cfg, _ = _local_album(album_id)
+    (local.album_dir(cfg, album_id) / name).unlink(missing_ok=True)
+    flash(f"Deleted {name}. The next sync takes it off the frames.", "ok")
+    return redirect(url_for("album_page", album_id=album_id))
 
 
 # Held while this process syncs; sync.run's file lock also covers the CLI.
@@ -647,4 +707,5 @@ def serve(host: str, port: int) -> None:
     app.secret_key = _secret_key()
     threading.Thread(target=_sync_loop, daemon=True).start()
     print(f"reframe web UI on http://{host}:{port}")
-    waitress_serve(app, host=host, port=port, threads=4)
+    # Waitress caps request bodies at 1 GiB; a few phone videos in one upload can be more.
+    waitress_serve(app, host=host, port=port, threads=4, max_request_body_size=10 << 30)

@@ -6,9 +6,11 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+from PIL import Image
+
 from reframe import config, sync
 from reframe.frames import registry
-from reframe.sources import Album, Listing, MediaItem
+from reframe.sources import Album, CombinedSource, Listing, MediaItem, local
 
 
 class FakeSource:
@@ -190,6 +192,18 @@ class SyncTest(unittest.TestCase):
         with sync._exclusive(self.cfg):
             with self.assertRaises(sync.SyncBusy):
                 self.sync()
+
+    def test_local_album_through_the_combined_source(self):
+        a = local.add(self.cfg, "Uploads")
+        self.frame("f", albums=[a["id"]])
+        photo = local.album_dir(self.cfg, a["id"]) / "p.jpg"
+        Image.new("RGB", (40, 30)).save(photo)
+        self.source = CombinedSource(FakeSource(), local.LocalSource(self.cfg))
+        self.sync()
+        self.assertEqual(len(self.files("f")), 1)
+        photo.unlink()  # the album's last photo: a directory listing is trusted, so it goes at once
+        self.sync()
+        self.assertEqual(self.files("f"), [])
 
 
 if __name__ == "__main__":

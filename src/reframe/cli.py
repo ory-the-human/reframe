@@ -14,7 +14,7 @@ import requests
 
 from . import agent, config, frames, snapshots, sources, sync
 from .frames import kiosk, registry
-from .sources import get_source, share_link
+from .sources import get_source, local, share_link
 from .sources.google_ambient.api import AmbientClient
 from .sources.google_ambient.auth import TokenStore
 from .sources.google_ambient.login import LoginFlow
@@ -336,7 +336,14 @@ def cmd_frame_check(cfg: config.Config, args: argparse.Namespace) -> None:
 
 
 def cmd_albums(cfg: config.Config, args: argparse.Namespace) -> None:
-    """Shared albums (the share_link source)."""
+    """Shared albums (the share_link source); the list also shows local albums."""
+    if not args.action:
+        albums = local.saved_albums(cfg) + (share_link.saved_albums(cfg) if cfg.source == "share_link" else [])
+        if not albums:
+            print("No albums yet; add one with `reframe albums add SHARE_LINK` or in Settings → Albums.")
+        for a in albums:
+            print(f"{a['id']}  {a['name']}")
+        return
     if cfg.source != "share_link":
         sys.exit("Albums here are for the share_link source; this server uses " + cfg.source + ".")
     try:
@@ -349,12 +356,6 @@ def cmd_albums(cfg: config.Config, args: argparse.Namespace) -> None:
         elif args.action == "rename":
             share_link.rename(cfg, args.album, args.name)
             print(f"Renamed {args.album} to {args.name.strip()}.")
-        else:
-            albums = share_link.saved_albums(cfg)
-            if not albums:
-                print("No albums yet; add one with `reframe albums add SHARE_LINK`.")
-            for a in albums:
-                print(f"{a['id']}  {a['name']}")
     except (share_link.ShareLinkError, requests.RequestException) as e:
         sys.exit(f"error: {e}")
 
