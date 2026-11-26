@@ -1,0 +1,43 @@
+name: Agent release
+on:
+  push:
+    tags: ['agent-v*']
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain
+        run: |
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;34.0.0" "platforms;android-34" >/dev/null
+      - name: Build and pin
+        env:
+          AGENT_KEYSTORE: ${{ runner.temp }}/agent.keystore
+          AGENT_KEYSTORE_B64: ${{ secrets.AGENT_KEYSTORE_B64 }}
+          AGENT_KEYSTORE_PASSWORD: ${{ secrets.AGENT_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$AGENT_KEYSTORE_B64" | base64 -d > "$AGENT_KEYSTORE"
+          agent/release.sh "${VERSION#agent-v}"
+      - name: Publish release
+        run: |
+          V=${VERSION#agent-v}
+          SHA=$(sha256sum "agent/build/reframe-agent-$V.apk" | cut -d' ' -f1)
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+          gh release create "$VERSION" "agent/build/reframe-agent-$V.apk" --title "Agent $V" --notes "sha256: $SHA"
+      - name: Open pin PR
+        run: |
+          V=${VERSION#agent-v}
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898+github-actions[bot]@users.noreply.github.com'
+          git switch -c "agent-pin-$V"
+          git commit -m "Pin agent release $V" src/reframe/frames/kiosk.py
+          git push origin "agent-pin-$V"
+          gh pr create --base main --head "agent-pin-$V" --title "Pin agent release $V" \
+            --body "Pins agent $V (release $VERSION) in kiosk.py. sha256: \`$SHA\`. Merging it makes the frames update."
