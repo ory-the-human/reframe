@@ -42,6 +42,8 @@ On NixOS, use the published image instead: add
 [deploy/nixos/reframe.nix](deploy/nixos/reframe.nix) to `imports`, write the
 settings to `/var/lib/reframe/reframe.env` (the same lines as `.env.example`) and
 run `nixos-rebuild switch`. To update, change `version` in that file and rebuild.
+The CLI commands below run there as `sudo reframe …` instead of
+`docker compose run --rm reframe …`.
 
 Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
 
