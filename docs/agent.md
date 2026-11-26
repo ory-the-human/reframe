@@ -11,14 +11,28 @@ clock, the watchdog and health reports, and kiosk setup installs it.
 ## Building and releasing
 
 `agent/build.sh` builds the APK without Gradle (JDK 17, Android SDK platform 34 and
-build-tools 34.0.0). `agent/release.sh` builds a release and prints the version,
-URL placeholder and checksum to pin in `src/reframe/frames/kiosk.py`; the server
-downloads that release when it sets up a kiosk, like it does Webview Kiosk. Until a
-release is pinned, or to try a local build, set `AGENT_APK` to the APK's path.
+build-tools 34.0.0). The server downloads the release pinned in
+`src/reframe/frames/kiosk.py` when it sets up a kiosk, like it does Webview Kiosk. To
+try a local build, set `AGENT_APK` to the APK's path.
+
+To release:
+
+1. Bump `versionName` and `versionCode` in `agent/AndroidManifest.xml` and merge.
+2. Push the tag `agent-v<versionName>` from main. The `Agent release` workflow checks
+   the tag matches `versionName`, builds and signs the APK, publishes the GitHub
+   release with `reframe-agent-<version>.apk` and opens the PR "Pin agent release
+   <version>", which updates the three `AGENT_*` pins in `kiosk.py`.
+3. Review and merge that PR. That is what makes frames update.
+
+Fallback without CI: `agent/release.sh` builds the release and writes the pins into
+`kiosk.py`; upload the APK to a release tagged `agent-v<version>` under the same name,
+then commit `kiosk.py`.
 
 Sign every release with the same key (`private/agent.keystore`, git-ignored, or
 `$AGENT_KEYSTORE`): Android only installs an update signed like the installed app.
-Keep a backup of it.
+Keep a backup of it. CI gets it from the repository secrets `AGENT_KEYSTORE_B64`
+(base64 of the keystore) and `AGENT_KEYSTORE_PASSWORD`. `build.sh` only creates a key
+when `$AGENT_KEYSTORE` is unset, so a missing key in CI fails the build.
 
 ## What it does
 

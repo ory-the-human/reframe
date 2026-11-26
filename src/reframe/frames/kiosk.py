@@ -35,7 +35,7 @@ COZYLA_PKG = "com.cozyla.frame"
 
 AGENT_PKG = "app.reframe.agent"
 AGENT_VERSION = "0.2.0"
-# The published release of the agent (agent/release.sh prints these). AGENT_APK
+# The published release of the agent (agent/release.sh writes these). AGENT_APK
 # overrides it with a local build (agent/build.sh).
 AGENT_APK_URL = "https://github.com/ory-the-human/reframe/releases/download/agent-v0.2.0/reframe-agent-0.2.0.apk"
 AGENT_APK_SHA256 = "11b95f352b069b98e638c528360b0c39fbd88ecc68c994a770c11f9c01dab32c"
