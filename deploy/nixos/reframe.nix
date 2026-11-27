@@ -3,7 +3,7 @@
 # To update, change `version` to a newer release and rebuild.
 { config, pkgs, ... }:
 let
-  version = "0.1.0";
+  version = "0.1.1";
   backend = config.virtualisation.oci-containers.backend;
 in
 {

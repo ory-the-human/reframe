@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reframe"
-version = "0.1.0"
+version = "0.1.1"
 description = "Self-hosted worker that syncs photo albums to photo frames, with pluggable sources and frames"
 readme = "README.md"
 requires-python = ">=3.9"
