@@ -108,6 +108,16 @@ def wanted(cfg: Config, frame: registry.FrameConfig, what: str) -> bool:
         return False
 
 
+def save_display(cfg: Config, frame: registry.FrameConfig, changes: dict[str, Any]) -> None:
+    """Settings changed on the frame itself; display_values clamps them."""
+    for key in ("interval", "volume"):
+        if key in changes:
+            frame.display[f"display_{key}"] = str(changes[key])
+    if "sound" in changes:
+        frame.display["display_sound"] = "yes" if changes["sound"] else "no"
+    registry.update(cfg, frame)
+
+
 def save_screenshot(cfg: Config, frame: registry.FrameConfig, data: bytes) -> None:
     path = screenshot_file(cfg, frame.id)
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,8 @@ package app.reframe.agent;
 
 import android.util.Log;
 
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -17,19 +19,22 @@ import java.util.regex.Pattern;
 
 /**
  * Serves the Mirror's copy of the slideshow on 127.0.0.1, with the server's URL
- * layout (/show/<key>, /playlist, /media/<name>), for the kiosk. The key isn't
- * checked: only apps on the frame can connect, and they can all be root.
+ * layout (/show/<key>, /playlist, /media/<name>), for the kiosk, plus the page's
+ * settings panel (POST /settings, GET and POST /wifi). The key isn't checked: only apps on the
+ * frame can connect, and they can all be root.
  */
 final class LocalServer extends Thread {
     static final int PORT = 1992;
-    private static final Pattern PATH = Pattern.compile("/show/[^/?]+(/playlist|/media/([^/?]+))?/?(\\?.*)?");
+    private static final Pattern PATH = Pattern.compile("/show/[^/?]+(/playlist|/media/([^/?]+)|/settings|/wifi)?/?(\\?.*)?");
     private static final Pattern RANGE = Pattern.compile("bytes=(\\d+)-(\\d*)");
 
     private final Mirror mirror;
+    private final Wifi wifi;
 
-    LocalServer(Mirror mirror) {
+    LocalServer(Mirror mirror, Wifi wifi) {
         super(AgentService.TAG + "-http");
         this.mirror = mirror;
+        this.wifi = wifi;
     }
 
     public void run() {
@@ -61,13 +66,27 @@ final class LocalServer extends Thread {
         BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream(), "ISO-8859-1"));
         String[] request = in.readLine().split(" ");
         String range = null;
+        int length = 0;
         for (String line; (line = in.readLine()) != null && !line.isEmpty(); ) {
             if (line.toLowerCase().startsWith("range:")) range = line.substring(6).trim();
+            if (line.toLowerCase().startsWith("content-length:")) length = Integer.parseInt(line.substring(15).trim());
         }
+        char[] raw = new char[length];
+        for (int n = 0, r; n < length && (r = in.read(raw, n, length - n)) > 0; ) n += r;
+        String body = new String(new String(raw).getBytes("ISO-8859-1"), "UTF-8");
         OutputStream out = s.getOutputStream();
         Matcher m = PATH.matcher(request[1]);
         if (!mirror.ready() || !m.matches()) {
             send(out, "404 Not Found", "text/plain", "Not found".getBytes("UTF-8"));
+        } else if ("/settings".equals(m.group(1))) {
+            mirror.change(new JSONObject(body));
+            send(out, "200 OK", "application/json", "{\"ok\": true}".getBytes("UTF-8"));
+        } else if ("/wifi".equals(m.group(1)) && "POST".equals(request[0])) {
+            JSONObject j = new JSONObject(body);
+            boolean ok = wifi.connect(j.getString("ssid"), j.optString("password"));
+            send(out, "200 OK", "application/json", ("{\"ok\": " + ok + "}").getBytes("UTF-8"));
+        } else if ("/wifi".equals(m.group(1))) {
+            send(out, "200 OK", "application/json", wifi.list().toString().getBytes("UTF-8"));
         } else if (m.group(1) == null) {
             send(out, "200 OK", "text/html; charset=utf-8", mirror.page().getBytes("UTF-8"));
         } else if (m.group(2) == null) {

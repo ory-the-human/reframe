@@ -131,7 +131,7 @@ public class AgentService extends Service {
         }, Watchdog.CHECK_MS);
         mirror = new Mirror(this);
         new Thread(mirror, TAG + "-mirror").start();
-        new LocalServer(mirror).start();
+        new LocalServer(mirror, new Wifi(this)).start();
         handler.post(tick);
         Log.i(TAG, "agent " + version + " started");
     }

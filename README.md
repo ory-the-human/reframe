@@ -147,7 +147,10 @@ open to the network) 2 minutes after it powers on. To update or restore a kiosk,
 unplug the frame, plug it back in, and start within those 2 minutes; adb stays
 open while reframe is connected. From agent 0.3.0 the frame plays the slideshow
 from its own copy of the photos, so it keeps going while the server is off, and the
-frame's page can take a screenshot of it. To try a local agent build, set `AGENT_APK` to it
+frame's page can take a screenshot of it. From agent 0.4.0, tapping the slideshow
+shows a gear for a settings panel on the frame: seconds per photo, videos' sound and
+volume (saved as the frame's settings, also shown on its page) and a Wi-Fi network
+picker. To try a local agent build, set `AGENT_APK` to it
 (`agent/build.sh`).
 
 ### CLI

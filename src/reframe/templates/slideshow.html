@@ -25,14 +25,56 @@
             font: 14px system-ui, sans-serif; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
     #message { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
                color: #888; font: 18px system-ui, sans-serif; text-align: center; padding: 24px; }
+    /* The settings panel, only when the frame's agent serves the page. */
+    #gear, #panel { position: fixed; display: none; color: #fff; font: 26px system-ui, sans-serif;
+                    background: rgba(0, 0, 0, 0.75); border-radius: 16px; }
+    #gear { top: 16px; right: 16px; padding: 12px 22px; font-size: 48px; }
+    #panel { top: 16px; right: 16px; padding: 12px 28px; width: 600px; max-width: calc(100vw - 32px); box-sizing: border-box; }
+    #panel .row { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 72px; margin: 16px 0; }
+    #panel button { font: inherit; min-width: 80px; min-height: 72px; padding: 0 24px; border: 0; border-radius: 12px; background: #444; color: #fff; }
+    #panel .row > button { flex: 1; }
+    #panel .row > span { display: flex; align-items: center; gap: 12px; }
+    #panel b { min-width: 64px; text-align: center; }
+    #panel input[type=checkbox] { width: 48px; height: 48px; }
+    #panel input[type=range] { flex: 1; height: 72px; -webkit-appearance: none; background: transparent; }
+    #panel input[type=range]::-webkit-slider-runnable-track { height: 10px; border-radius: 5px; background: #666; }
+    #panel input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 48px; height: 48px; margin-top: -19px;
+                                                     border-radius: 50%; background: #fff; }
+    #networks { max-height: 50vh; overflow-y: auto; }
+    #networks button { display: flex; justify-content: space-between; align-items: center; width: 100%; margin: 8px 0; text-align: left; }
+    #networks small { font-size: 20px; color: #bbb; }
+    #password { font: inherit; width: 100%; box-sizing: border-box; min-height: 72px; padding: 0 16px; border: 0; border-radius: 12px; }
+    #wifistatus:empty { display: none; }
   </style>
 </head>
 <body>
 <div id="stage"><div id="message">Loading…</div></div>
+<div id="gear">⚙</div>
+<div id="panel">
+  <div id="main">
+    <div class="row">Seconds per photo
+      <span><button id="slower">−</button> <b id="interval"></b> <button id="faster">+</button></span></div>
+    <label class="row">Sound <input type="checkbox" id="sound"></label>
+    <div class="row">Volume <input type="range" id="volume" min="0" max="100"></div>
+    <div class="row"><button id="wifi">Wi-Fi</button> <button id="close">Close</button></div>
+  </div>
+  <div id="wifiview" hidden>
+    <div id="networks"></div>
+    <div id="join" hidden>
+      <div class="row"><b id="joinname"></b></div>
+      <input type="password" id="password">
+      <div class="row"><button id="connect">Connect</button></div>
+    </div>
+    <p id="wifistatus"></p>
+    <div class="row"><button id="back">Back</button></div>
+  </div>
+</div>
 <script>
 (function () {
   "use strict";
   var base = {{ url_for('slideshow', key=key) | tojson }};
+  var PAGE_VERSION = {{ page_version | tojson }};
+  var newPage = null;   // a newer page's version, loaded at the next photo
   var params = new URLSearchParams(location.search);
   var stage = document.getElementById("stage");
   var message = document.getElementById("message");
@@ -48,6 +90,7 @@
   var pos = -1;         // index in history of the slide on screen
   var HISTORY_MAX = 50;
   var seq = 0;          // bumped per slide change, so a slow load can't override a newer one
+  var agentHere = false; // served by the frame's agent, which offers the settings panel
 
   // Each screen can override the shared settings: ?interval=10&layout=pair&orientation=portrait&shuffle=no&fill=black&date=no
   function applyOverrides(d) {
@@ -174,7 +217,7 @@
 
   function showVideo(item) {
     var video = document.createElement("video");
-    video.muted = true;
+    video.muted = !(agentHere && display.sound);
     video.autoplay = true;
     video.playsInline = true;
     video.src = mediaUrl(item);
@@ -212,6 +255,7 @@
   }
 
   function advance() {
+    if (newPage && reloadOnce(newPage)) return;
     if (pos < history.length - 1) { go(pos + 1); return; }
     var my = ++seq;
     if (!items.length) {
@@ -243,6 +287,16 @@
     });
   }
 
+  // Once per version, so a page that still comes back old can't reload in a loop.
+  function reloadOnce(version) {
+    try {
+      if (sessionStorage.getItem("page_version") === version) return false;
+      sessionStorage.setItem("page_version", version);
+    } catch (e) {}
+    location.reload();
+    return true;
+  }
+
   function back() {
     if (pos > 0) go(pos - 1);
   }
@@ -254,9 +308,14 @@
         var before = display ? JSON.stringify(display) : null;
         display = applyOverrides(data.display);
         items = data.items;
+        agentHere = !!data.agent;
+        if (data.page_version && data.page_version !== PAGE_VERSION) newPage = data.page_version;
         if (before !== JSON.stringify(display)) {
           queue = [];
           layoutStage();
+          showSettings();
+          var video = current && current.querySelector("video");
+          if (video) video.muted = !(agentHere && display.sound);
           // A new interval applies to the photo on screen too, not only the next one.
           if (!first && current && !current.querySelector("video")) schedule(display.interval * 1000);
         }
@@ -273,6 +332,7 @@
   // Swipe (or arrow keys) for the next or previous photo.
   var touchX = null, touchY = null;
   document.addEventListener("touchstart", function (e) {
+    if (panel.contains(e.target)) return;
     touchX = e.changedTouches[0].clientX;
     touchY = e.changedTouches[0].clientY;
   }, { passive: true });
@@ -291,6 +351,110 @@
     var el = document.documentElement;
     if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(function () {});
   });
+
+  // Settings panel: a tap shows the gear for a few seconds, the gear opens the panel.
+  var gear = document.getElementById("gear"), panel = document.getElementById("panel");
+  var gearTimer = null, panelTimer = null;
+  function $(id) { return document.getElementById(id); }
+  document.addEventListener("click", function (e) {
+    if (!agentHere || panel.style.display === "block" || e.target === gear) return;
+    gear.style.display = "block";
+    clearTimeout(gearTimer);
+    gearTimer = setTimeout(function () { gear.style.display = "none"; }, 15000);
+  });
+  function closePanel() { panel.style.display = "none"; showMain(); }
+  function touched() { clearTimeout(panelTimer); panelTimer = setTimeout(closePanel, 45000); }
+  gear.addEventListener("click", function () {
+    gear.style.display = "none";
+    panel.style.display = "block";
+    showSettings();
+    touched();
+  });
+  panel.addEventListener("touchstart", touched, { passive: true });
+  panel.addEventListener("click", touched);
+  panel.addEventListener("input", touched);
+  function showSettings() {
+    $("interval").textContent = display.interval + " s";
+    $("sound").checked = display.sound;
+    $("volume").value = display.volume;
+  }
+  // Applies at once on the frame; the agent passes it on to the server.
+  function save(changes) {
+    fetch(base + "/settings", { method: "POST", body: JSON.stringify(changes) })
+      .then(function () { return refresh(false); });
+  }
+  function step(dir) {
+    var v = display.interval;
+    save({ interval: Math.max(5, Math.min(300, v % 5 ? Math.round(v / 5) * 5 : v + 5 * dir)) });
+  }
+  $("slower").addEventListener("click", function () { step(-1); });
+  $("faster").addEventListener("click", function () { step(1); });
+  $("sound").addEventListener("change", function () { save({ sound: this.checked }); });
+  $("volume").addEventListener("change", function () { save({ volume: parseInt(this.value, 10) }); });
+
+  // Wi-Fi: the nearby networks, and joining one. The list refreshes while it's open.
+  var wifiTimer = null, joining = null;
+  function showMain() { clearTimeout(wifiTimer); $("wifiview").hidden = true; $("main").hidden = false; }
+  function showNetworks() {
+    $("main").hidden = true; $("wifiview").hidden = false;
+    $("join").hidden = true; $("networks").hidden = false;
+    $("wifistatus").textContent = "Looking for networks…";
+    loadNetworks();
+  }
+  function loadNetworks() {
+    clearTimeout(wifiTimer);
+    fetch(base + "/wifi").then(function (r) { return r.json(); }).then(function (w) {
+      if ($("wifiview").hidden) return;
+      var list = $("networks");
+      list.innerHTML = "";
+      w.networks.forEach(function (n) {
+        var b = document.createElement("button"), note = document.createElement("small");
+        b.textContent = n.ssid;
+        note.textContent = (n.ssid === w.current ? "Connected" : n.saved ? "Saved" : n.secure ? "Password" : "Open")
+          + " " + "▂▄▆█".slice(0, n.bars + 1);
+        b.appendChild(note);
+        b.addEventListener("click", function () { pick(n, w.current); });
+        list.appendChild(b);
+      });
+      if (joining && w.current === joining) {
+        $("wifistatus").textContent = "Connected to " + joining + ".";
+        joining = null;
+      } else if (!joining) {
+        $("wifistatus").textContent = w.networks.length ? "" : "Looking for networks…";
+      }
+      wifiTimer = setTimeout(loadNetworks, 5000);
+    });
+  }
+  function pick(n, current) {
+    if (n.ssid === current) return;
+    if (!n.secure) return join(n.ssid, "");
+    $("networks").hidden = true;
+    $("join").hidden = false;
+    $("joinname").textContent = n.ssid;
+    $("password").value = "";
+    $("password").placeholder = n.saved ? "Saved password (or type a new one)" : "Password";
+    $("password").focus();
+  }
+  function join(ssid, password) {
+    $("join").hidden = true;
+    $("networks").hidden = false;
+    $("wifistatus").textContent = "Connecting to " + ssid + "…";
+    fetch(base + "/wifi", { method: "POST", body: JSON.stringify({ ssid: ssid, password: password }) })
+      .then(function (r) { return r.json(); }).then(function (r) {
+        joining = r.ok ? ssid : null;
+        if (!r.ok) $("wifistatus").textContent = "Couldn't join " + ssid + ".";
+        setTimeout(function () {
+          if (joining !== ssid) return;
+          joining = null;
+          $("wifistatus").textContent = "Couldn't connect to " + ssid + ". Check the password.";
+        }, 30000);
+        loadNetworks();
+      });
+  }
+  $("wifi").addEventListener("click", showNetworks);
+  $("connect").addEventListener("click", function () { join($("joinname").textContent, $("password").value); });
+  $("back").addEventListener("click", function () { joining = null; $("join").hidden ? showMain() : showNetworks(); });
+  $("close").addEventListener("click", closePanel);
 
   // Keep the screen on where the browser allows it (needs HTTPS or localhost).
   function keepAwake() {

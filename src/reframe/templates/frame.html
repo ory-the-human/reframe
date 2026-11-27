@@ -68,6 +68,17 @@
       {% for value, text in display_choices[key].items() %}<option value="{{ value }}" {{ "selected" if frame.display.get(key) == value }}>{{ text }}</option>{% endfor %}
     </select>
     {% endfor %}
+    {% if frame.is_kiosk %}
+    <label for="display_sound">Sound</label>
+    <select id="display_sound" name="display_sound">
+      <option value="">Default ({{ display_choices["display_sound"][cfg.display_sound] }})</option>
+      {% for value, text in display_choices["display_sound"].items() %}<option value="{{ value }}" {{ "selected" if frame.display.get("display_sound") == value }}>{{ text }}</option>{% endfor %}
+    </select>
+    <label for="display_volume">Volume (0–100)</label>
+    <input type="number" id="display_volume" name="display_volume" value="{{ frame.display.get('display_volume', '') }}"
+           min="0" max="100" placeholder="Default ({{ cfg.display.volume }})">
+    <p class="muted">Also set from the frame itself: tap the slideshow, then the gear.</p>
+    {% endif %}
     {% endif %}
 
     {% if frame.is_kiosk %}

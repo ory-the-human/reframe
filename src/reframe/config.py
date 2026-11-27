@@ -26,6 +26,9 @@ SETTINGS = {
     "display_shuffle": ("DISPLAY_SHUFFLE", "yes"),
     "display_fill": ("DISPLAY_FILL", "blur"),
     "display_date": ("DISPLAY_DATE", "yes"),
+    # Kiosk frames: play videos' sound, at this media volume (0-100).
+    "display_sound": ("DISPLAY_SOUND", "no"),
+    "display_volume": ("DISPLAY_VOLUME", "50"),
     # Screen settings for kiosk frames, applied by the agent on the frame.
     "screen_schedule": ("SCREEN_SCHEDULE", "always"),
     "screen_dark": ("SCREEN_DARK", "yes"),
@@ -37,7 +40,8 @@ SETTINGS = {
     "sync_minutes": ("SYNC_MINUTES", "60"),
 }
 
-DISPLAY_KEYS = ("display_interval", "display_layout", "display_orientation", "display_shuffle", "display_fill", "display_date")
+DISPLAY_KEYS = ("display_interval", "display_layout", "display_orientation", "display_shuffle", "display_fill", "display_date",
+                "display_sound", "display_volume")
 
 DISPLAY_CHOICES = {
     "display_layout": {"pair": "Two photos together when they fit better", "single": "One photo at a time"},
@@ -51,6 +55,7 @@ DISPLAY_CHOICES = {
     "display_shuffle": {"yes": "Shuffle", "no": "In order"},
     "display_fill": {"blur": "A blurred copy of the photo", "black": "Black"},
     "display_date": {"yes": "Show the date each photo was taken", "no": "Don't show it"},
+    "display_sound": {"no": "Muted", "yes": "Play videos' sound"},
 }
 
 
@@ -116,12 +121,17 @@ def display_values(raw: dict[str, str]) -> dict[str, object]:
         interval = max(3, min(3600, int(raw.get("display_interval", ""))))
     except ValueError:
         interval = 15
-    values: dict[str, object] = {"interval": interval}
+    try:
+        volume = max(0, min(100, int(raw.get("display_volume", ""))))
+    except ValueError:
+        volume = 50
+    values: dict[str, object] = {"interval": interval, "volume": volume}
     for key, choices in DISPLAY_CHOICES.items():
         value = raw.get(key, "")
         values[key[len("display_"):]] = value if value in choices else next(iter(choices))
     values["shuffle"] = values["shuffle"] == "yes"
     values["date"] = values["date"] == "yes"
+    values["sound"] = values["sound"] == "yes"
     return values
 
 
@@ -139,6 +149,8 @@ class Config:
     display_shuffle: str
     display_fill: str
     display_date: str
+    display_sound: str
+    display_volume: str
     screen_schedule: str
     screen_dark: str
     screen_dark_lux: str

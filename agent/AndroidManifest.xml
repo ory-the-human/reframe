@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="app.reframe.agent"
-    android:versionCode="3"
-    android:versionName="0.3.0">
+    android:versionCode="4"
+    android:versionName="0.4.0">
 
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="23" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Android 6 shows Wi-Fi scan results only to apps with location; the agent grants it itself as root. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application android:label="reframe agent" android:allowBackup="false">
         <service android:name="app.reframe.agent.AgentService" android:exported="false" />

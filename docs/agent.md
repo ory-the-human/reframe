@@ -45,7 +45,7 @@ when `$AGENT_KEYSTORE` is unset, so a missing key in CI fails the build.
     2 minutes (setup rewrites it too). It stops the kiosk, rewrites only those
     values (the password and anything else stay) and opens it again;
   - the kiosk in front, when another app has had the screen for 5 minutes while
-    it's on (time enough to use Android's settings);
+    it's on. Going back to the kiosk sooner ends the wait;
   - adb, by restarting adbd when it's stuck (below);
   - adb closed: 2 minutes after power-on, once nothing is connected, it turns
     network adb off (`setprop service.adb.tcp.port -1` and restarts adbd).
@@ -62,6 +62,8 @@ when `$AGENT_KEYSTORE` is unset, so a missing key in CI fails the build.
   screen's state once a minute.
 - **Local slideshow:** keeps a copy of the frame's photos and plays the slideshow
   from the frame itself, so it keeps going while the server is off (below).
+- **Settings on the frame:** a small panel on the slideshow for the interval, sound
+  and Wi-Fi (below).
 - **Screenshots:** sends a picture of the screen when asked from the frame's page (below).
 - **Reboot:** reboots the frame when asked from the frame's page (below).
 
@@ -168,6 +170,42 @@ the last display settings and dates.
   reopens it. Agents that don't send `local_port` keep the server's URL. The frame's
   page shows which one the kiosk uses. "Update kiosk settings" writes the server's URL;
   the watchdog moves it back 2 minutes later.
+- **Page updates:** the playlist carries `page_version`, a hash of `slideshow.html`.
+  An open page whose version differs reloads at its next photo (once per version), so
+  a new page reaches frames and browsers within a minute or two, without a reboot.
+  Agents before 0.4.0 don't pass it on, and pages from before it don't check it.
+
+## Settings on the frame
+
+From agent 0.4.0, tapping the slideshow shows a gear for 15 s; it opens a panel with
+seconds per photo (− / + in steps of 5, from 5 to 300), videos' sound on or off, the
+volume, and **Wi-Fi**. Anyone at the frame can use it. It closes after 45 s
+without a touch. The gear only shows when the agent serves the page (its playlist has
+`"agent": true`), not in a browser or on older agents.
+
+- **Applying:** the page posts the change to the agent (`POST /show/<key>/settings`,
+  e.g. `{"interval": 20}`). The agent puts it in its copy of the display settings, so
+  the page and the playlist have it at once, and sets Android's media volume
+  (`AudioManager`, `STREAM_MUSIC`) when sound is on. With sound off the page mutes
+  videos and the volume is left alone. Webview Kiosk plays sound without a tap since
+  setup sets `web_engine.media_playback_requires_user_gesture` to false.
+- **To the server:** unsent changes are kept in the agent's prefs. At the start of each
+  copy round (once a minute) the agent sends them to `POST /agent/v1/display`
+  (`{"interval": 20, "sound": true, "volume": 60}`, any of them), which saves them as
+  the frame's `display_interval`, `display_sound` and `display_volume`, then fetches
+  the slideshow with them. While the server is off they stay on the frame and are
+  sent when it's back. The frame's page shows them as Seconds per photo, Sound and
+  Volume; the agent applies a volume set there within a minute.
+- **Wi-Fi:** the panel lists the nearby networks (`GET /show/<key>/wifi`, refreshed
+  every 5 s while open), strongest first, marking the connected and saved ones. Tapping
+  one asks for its password (left empty, a saved network keeps its own) and joins it
+  (`POST /show/<key>/wifi`, `{"ssid": …, "password": …}`); open networks join at
+  once. It stays in the panel, and has no switch to turn Wi-Fi off. WPA and open
+  networks only. Android 6 shows scan results only to apps with location, so the agent
+  grants itself `ACCESS_COARSE_LOCATION` as root.
+- **Who can call it:** like the rest of the local server, only apps on the frame, which
+  can all be root anyway. The most one could do is change those three settings for this
+  frame, or move it to another nearby network.
 
 ## Screenshots
 

@@ -1,4 +1,4 @@
-"""The agent endpoints for the local slideshow, screenshots and reboots. Run: python -m unittest"""
+"""The agent endpoints for the local slideshow, settings set on the frame, screenshots and reboots. Run: python -m unittest"""
 
 import os
 import tempfile
@@ -67,6 +67,18 @@ class AgentTest(unittest.TestCase):
         self.client.post(f"/frames/{self.frame.id}/reboot")
         self.assertTrue(self.report().get("reboot"))
         self.assertNotIn("reboot", self.report())
+
+    def test_settings_from_the_frame_are_saved(self):
+        change = {"interval": 20, "sound": True, "volume": 60}
+        self.assertEqual(self.client.post("/agent/v1/display", json=change).status_code, 401)
+        self.client.post("/agent/v1/display", json=change, headers=self.auth)
+        saved = registry.find(registry.load_all(self.cfg), self.frame.id).display
+        self.assertEqual((saved["display_interval"], saved["display_sound"], saved["display_volume"]), ("20", "yes", "60"))
+
+    def test_slideshow_carries_the_frames_settings(self):
+        self.client.post("/agent/v1/display", json={"interval": 20, "sound": True, "volume": 60}, headers=self.auth)
+        display = self.client.get("/agent/v1/slideshow", headers=self.auth).get_json()["display"]
+        self.assertEqual((display["interval"], display["sound"], display["volume"]), (20, True, 60))
 
 
 if __name__ == "__main__":

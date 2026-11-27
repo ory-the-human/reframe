@@ -5,11 +5,13 @@ this UI can read the photos the source is authorized for.
 """
 
 import collections
+import hashlib
 import hmac
 import os
 import secrets
 import threading
 import time
+from pathlib import Path
 from functools import wraps
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -30,6 +32,8 @@ from .sources.google_ambient.login import LoginFlow
 from .store import read_json
 
 app = Flask(__name__)
+# Open slideshows reload themselves when this differs from the version they were served.
+PAGE_VERSION = hashlib.sha256((Path(__file__).parent / "templates" / "slideshow.html").read_bytes()).hexdigest()[:12]
 
 _login_lock = threading.Lock()
 _login: Optional[LoginFlow] = None
@@ -620,7 +624,7 @@ def _web_frame(key: str) -> tuple[config.Config, registry.FrameConfig]:
 @app.get("/show/<key>")
 def slideshow(key: str):
     _web_frame(key)
-    return render_template("slideshow.html", key=key)
+    return render_template("slideshow.html", key=key, page_version=PAGE_VERSION)
 
 
 @app.get("/show/<key>/playlist")
@@ -632,7 +636,7 @@ def slideshow_playlist(key: str):
 def _playlist(cfg: config.Config, frame: registry.FrameConfig) -> dict[str, Any]:
     media = web_frame.list_media(registry.web_media_dir(cfg.data_dir, frame.id))
     taken = sync.taken(cfg, frame.id)
-    return {"display": frames.display_for(cfg, frame), "items": [{**m, "taken": taken.get(m["name"])} for m in media]}
+    return {"display": frames.display_for(cfg, frame), "page_version": PAGE_VERSION, "items": [{**m, "taken": taken.get(m["name"])} for m in media]}
 
 
 @app.get("/show/<key>/media/<name>")
@@ -683,13 +687,24 @@ def agent_report():
 def agent_slideshow():
     # The agent keeps a copy of this and the files, and serves the slideshow on the frame.
     cfg, frame = _agent_frame()
-    return {**_playlist(cfg, frame), "page": render_template("slideshow.html", key=frame.key)}
+    return {**_playlist(cfg, frame), "page": render_template("slideshow.html", key=frame.key, page_version=PAGE_VERSION)}
 
 
 @app.get("/agent/v1/media/<name>")
 def agent_media(name: str):
     cfg, frame = _agent_frame()
     return send_from_directory(registry.web_media_dir(cfg.data_dir, frame.id), name)
+
+
+@app.post("/agent/v1/display")
+def agent_display():
+    # Set on the frame's own settings panel; the server stays the source of truth.
+    cfg, frame = _agent_frame()
+    changes = request.get_json(silent=True)
+    if not isinstance(changes, dict):
+        abort(400)
+    agent.save_display(cfg, frame, changes)
+    return {"ok": True}
 
 
 @app.post("/agent/v1/screenshot")
