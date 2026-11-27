@@ -31,6 +31,10 @@ def albums_file(cfg: Config) -> Path:
     return cfg.data_dir / "local_albums.json"
 
 
+def dates_file(cfg: Config) -> Path:
+    return cfg.data_dir / "local_dates.json"
+
+
 def album_dir(cfg: Config, album_id: str) -> Path:
     return cfg.data_dir / "albums" / album_id
 
@@ -62,6 +66,9 @@ def remove(cfg: Config, ref: str) -> dict[str, str]:
     a = find(cfg, ref)
     _save(cfg, [b for b in saved_albums(cfg) if b["id"] != a["id"]])
     shutil.rmtree(album_dir(cfg, a["id"]), ignore_errors=True)
+    dates = read_json(dates_file(cfg)) or {}
+    if dates.pop(a["id"], None) is not None:
+        write_json(dates_file(cfg), dates)
     return a
 
 
@@ -129,7 +136,7 @@ class LocalSource:
         return [Album(a["id"], a["name"]) for a in saved_albums(self.cfg)]
 
     def list_album(self, album: Album) -> Listing:
-        cache = read_json(self.cfg.data_dir / "local_dates.json") or {}
+        cache = read_json(dates_file(self.cfg)) or {}
         dates, items = {}, []
         for path, mime in files(self.cfg, album.id):
             st = path.stat()
@@ -141,7 +148,7 @@ class LocalSource:
             )
             items.append(MediaItem(id=item_id, mime_type=mime, created=dates[item_id], extra={"local": f"{album.id}/{path.name}"}))
         if dates != cache.get(album.id):
-            write_json(self.cfg.data_dir / "local_dates.json", {**cache, album.id: dates})
+            write_json(dates_file(self.cfg), {**cache, album.id: dates})
         return Listing(album=album, items=items, complete=True, trusted=True)
 
     def fetch(self, item: MediaItem, dest: Path, max_px: int) -> None:
