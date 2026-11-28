@@ -1,249 +1,134 @@
 {% extends "base.html" %}
-{% from "_screen.html" import screen_fields %}
-{% from "_health.html" import health_details, health_line %}
+{% from "_ui.html" import group, row, thumb, header, buttons, button, dialog, toggle, text_row, settings_groups %}
+{% from "_health.html" import health_rows %}
+{% block heading %}{{ frame.name }}{% endblock %}
 {% block content %}
-<section>
-  <h2>{{ "Add a frame" if is_new else frame.name }}</h2>
-  {% if is_new %}
-  <form method="get" class="row" style="gap:8px">
-    <label for="kind" style="margin:0">Type</label>
-    <select id="kind" name="kind" onchange="this.form.submit()" style="width:auto">
-      {% for kind, label in kinds.items() %}<option value="{{ kind }}" {{ "selected" if kind == frame.kind }}>{{ label }}</option>{% endfor %}
-    </select>
-    <noscript><button class="secondary">Change type</button></noscript>
-  </form>
-  {% else %}
-  <p class="muted">{{ kinds[frame.kind] }}{% if frame.kind != "web" %} · <code>{{ frame.target }}</code>{% endif %}
-    · id <code>{{ frame.id }}</code> · {{ count }} photos</p>
-  {% if frame.agent_key %}<p>{{ health_line(view.health) }}</p>{% endif %}
-  {% if frame.kind == "web" %}
-  <div class="row" style="margin:8px 0">
-    <a class="code" href="{{ view.slideshow_url }}" target="_blank" rel="noopener">{{ view.slideshow_url }}</a>
-    <div class="qr small">{{ qr_svg(view.slideshow_url) }}</div>
-  </div>
-  <p class="muted">The slideshow link is the password for this screen, so share it only with the screen.
-    A screen can override the display settings by adding e.g.
-    <code>?interval=10&amp;layout=pair&amp;orientation=portrait&amp;shuffle=no&amp;fill=black</code> to its link.</p>
-  {% elif frame.kind == "cozyla_adb" and not frame.is_kiosk %}
-  <p class="muted">The first connection shows an "Allow USB debugging?" prompt on the frame. Tick "Always allow", then check again.</p>
-  {% endif %}
-  <form id="check" method="post" action="{{ url_for('frame_check', frame_id=frame.id) }}" style="margin-top:8px">
-    <button class="secondary">Check</button> <span class="muted">Confirms this server can reach the frame.</span></form>
-  {% if view.check %}
-    {% if view.check.ok %}
-      <table style="margin-top:6px">{% for k, val in view.check.info.items() %}<tr><th>{{ k }}</th><td>{{ val }}</td></tr>{% endfor %}</table>
-    {% else %}
-      <p class="error">{{ view.check.error }}</p>
-    {% endif %}
-  {% endif %}
-</section>
+{% set f, h, here = frame, view.health, url_for('frame_edit', frame_id=frame.id) %}
 
-<section id="albums">
-  <h2>Albums {% if shown %}<span class="muted" style="font-weight:400">{{ shown|length }}</span>{% else %}<span class="badge ok">All albums</span>{% endif %}</h2>
-  {% if albums_error %}<p class="warn">Couldn't load albums from the source: {{ albums_error }}</p>{% endif %}
-  {% if shown %}
-  <table class="mid">
-    {% for a in shown %}
-    <tr><td><a href="{{ url_for('album_page', album_id=a.id) }}">{{ a.name }}</a></td>
-      <td style="text-align:right"><form class="inline" method="post" action="{{ url_for('frame_albums', frame_id=frame.id) }}">
-        <button class="secondary" name="remove" value="{{ a.id }}">Remove</button></form></td></tr>
-    {% endfor %}
-  </table>
-  {% else %}
-  <p>This frame shows every album, also ones added later. Add an album below to show only the ones you pick.</p>
-  {% endif %}
-  {% if picker %}
-  <form class="add" method="post" action="{{ url_for('frame_albums', frame_id=frame.id) }}">
-    <label for="add">{{ "Add" if shown else "Show only" }}</label>
-    <select id="add" name="add">{% for a in picker %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
-    <button>Add</button>
-  </form>
-  {% elif not shown and not albums_error %}
-  <p class="muted">There are no albums yet: add them on the <a href="{{ url_for('index') }}#albums">dashboard</a>.</p>
-  {% endif %}
-</section>
+{% set detail = ("agent " ~ h.agent_version) if h and h.agent_version else (f.target if f.kind != "web" else none) %}
+{% set tone, state = view.status %}
+{% set state = state ~ (", screen " ~ ("on" if h.screen.on else "off") if h and h.online and h.screen else "") %}
+{% set picture = thumb("frame", f.id, view.thumb, "l") %}
+{% call header(f.name, view.kind_label ~ (", " ~ detail if detail else ""),
+               '<a href="%s">%s</a>'|format(url_for('frame_screenshot_png', frame_id=f.id), picture)|safe if screenshot and screenshot.at else picture,
+               (tone, state)) %}
+  {{ button("Rename…", dialog="rename") }}
+{% endcall %}
+{% call dialog("rename", "Rename frame", here, "Rename") %}
+  <div class="group">{{ text_row("Name", "name", f.name) }}</div>
+{% endcall %}
 
-{% set run = (sync_run.frames | selectattr("frame", "equalto", frame.name) | first) if sync_run else none %}
-{% if run %}
-<section id="sync">
-  <h2>Last sync <span class="muted" style="font-weight:400">{{ clock(sync_run.finished) }}</span></h2>
-  {% if run.error %}<p class="error">{{ run.error }}</p>{% endif %}
-  <table>
-    {% for a in run.albums %}
-    <tr><td>{{ a.album }}</td>
-      <td><span class="ok">+{{ a.added }}</span> <span class="error">−{{ a.removed }}</span>, {{ a.kept }} kept
-        {%- if a.waiting %}, <span class="warn">{{ a.waiting }} missing, kept for now</span>{% endif %}
-        {%- if a.failed %}, <span class="error">{{ a.failed }} failed</span>{% endif %}
-        {%- if a.note %} <span class="muted">({{ a.note }})</span>{% endif %}</td></tr>
-    {% endfor %}
-  </table>
-</section>
+{% set action = url_for('frame_albums', frame_id=f.id) %}
+{% call group("Albums on this frame", footer=albums_error and "Couldn't load albums from the source: " ~ albums_error) %}
+  {{ toggle(action, "Every album, including new ones", "every", not f.albums) }}
+  {% for a in albums %}
+  {{ toggle(action, a.name, "show", f.shows(a.id), {"album": a.id}, "%d photos"|format(a.count) if a.count is not none,
+            thumb("album", a.id, a.thumb), not f.albums or (f.albums|length == 1 and a.id in f.album_ids)) }}
+  {% endfor %}
+{% endcall %}
+
+{{ settings_groups(settings, values, here) }}
+
+{% if f.kind == "web" %}
+{% call group("Slideshow link", footer="The link works as this screen's password, so share it only with the screen. To change a setting on that screen only, add it to the link, like ?interval=10.") %}
+  {% call row("Open the slideshow on the screen that shows this frame") %}
+    {{ button("Show link…", dialog="link") }}{{ button("Open", href=view.slideshow_url) }}
+  {% endcall %}
+{% endcall %}
+{% call dialog("link", "Slideshow link") %}
+  <p><code>{{ view.slideshow_url }}</code></p>
+  <div class="qr">{{ qr_svg(view.slideshow_url) }}</div>
+{% endcall %}
+{% else %}
+{% set first_time = f.kind == "cozyla_adb" and not f.kiosk and "The first connection shows an \"Allow USB debugging?\" prompt on the frame. Tick \"Always allow\", then check again." %}
+{% call group("Connection", footer=first_time or (f.kind == "folder" and "A path inside the container; mount the share or drive there in docker-compose.yml.")) %}
+  <form method="post" action="{{ here }}">
+  {%- if f.kind == "cozyla_adb" %}{{ text_row("adb address", "address", f.address, placeholder="192.168.1.50:5555", save="Save") }}
+  {%- else %}{{ text_row("Folder", "folder", f.folder, placeholder="/frame", save="Save") }}{% endif -%}
+  </form>
+  {% call row("Check connection", "Confirms this server can reach the frame") %}{{ button("Check", action=url_for('frame_check', frame_id=f.id)) }}{% endcall %}
+  {% if view.check and view.check.ok %}{% for k, v in view.check.info.items() %}{{ row(k, value=v) }}{% endfor %}
+  {% elif view.check %}{{ row("Couldn't reach the frame", view.check.error, value="Failed", tone="error") }}{% endif %}
+{% endcall %}
 {% endif %}
 
-<section id="settings">
-  <h2>Settings</h2>
-  {% endif %}
+{% set s = view.synced %}
+{% if s %}
+{% call group("Last sync", footer="Finished at " ~ clock(nav.run.finished)) %}
+  {% if s.error %}{{ row("Sync failed", s.error, value="Failed", tone="error") }}{% endif %}
+  {% for a in s.albums %}
+  {% set problems = [a.waiting and "%d missing, kept for now"|format(a.waiting), a.failed and "%d failed"|format(a.failed)] | select | join(", ") %}
+  {{ row(a.album, "%d added, %d removed, %d kept"|format(a.added, a.removed, a.kept) ~ (" (" ~ a.note ~ ")" if a.note else ""),
+         value=problems or none, tone=("error" if a.failed else "warn") if problems else none) }}
+  {% endfor %}
+{% endcall %}
+{% endif %}
 
-  <form method="post">
-    <input type="hidden" name="kind" value="{{ frame.kind }}">
-    <label for="name">Name</label>
-    <input type="text" id="name" name="name" value="{{ frame.name }}" maxlength="60" placeholder="Living room" required>
-
-    {% if frame.kind == "cozyla_adb" %}
-    <label for="address">adb address</label>
-    <input type="text" id="address" name="address" value="{{ frame.address }}" placeholder="192.168.1.50:5555">
-    {% elif frame.kind == "folder" %}
-    <label for="folder">Folder</label>
-    <input type="text" id="folder" name="folder" value="{{ frame.folder }}" placeholder="/frame">
-    <p class="muted">A path inside the container; mount the share or drive there in docker-compose.yml.</p>
-    {% endif %}
-
-    <h2 style="margin-top:24px">Videos</h2>
-    <label for="convert_videos">Videos</label>
-    <select id="convert_videos" name="convert_videos">
-      <option value="">Default ({{ video_choices[cfg.convert_videos] }})</option>
-      {% for value, text in video_choices.items() %}<option value="{{ value }}" {{ "selected" if frame.display.get("convert_videos") == value }}>{{ text }}</option>{% endfor %}
-    </select>
-    <p class="muted">Re-encodes videos to H.264 sized for the frame's screen, so the Cozyla frame plays them
-      without a green bar. Applies to videos synced from now on; videos already on a frame stay as they are.</p>
-
-    {% if frame.shows_slideshow %}
-    <h2 style="margin-top:24px">Display</h2>
-    <p class="muted">Leave a setting on "Default" to use the one in <a href="{{ url_for('settings') }}">settings</a>.</p>
-    <label for="display_interval">Seconds per photo</label>
-    <input type="number" id="display_interval" name="display_interval" value="{{ frame.display.get('display_interval', '') }}"
-           min="3" max="3600" placeholder="Default ({{ cfg.display.interval }})">
-    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order"), ("display_fill", "Space around photos"), ("display_date", "Date taken")] %}
-    <label for="{{ key }}">{{ label }}</label>
-    <select id="{{ key }}" name="{{ key }}">
-      <option value="">Default ({{ display_choices[key][cfg[key]] }})</option>
-      {% for value, text in display_choices[key].items() %}<option value="{{ value }}" {{ "selected" if frame.display.get(key) == value }}>{{ text }}</option>{% endfor %}
-    </select>
-    {% endfor %}
-    {% if frame.is_kiosk %}
-    <label for="display_sound">Sound</label>
-    <select id="display_sound" name="display_sound">
-      <option value="">Default ({{ display_choices["display_sound"][cfg.display_sound] }})</option>
-      {% for value, text in display_choices["display_sound"].items() %}<option value="{{ value }}" {{ "selected" if frame.display.get("display_sound") == value }}>{{ text }}</option>{% endfor %}
-    </select>
-    <label for="display_volume">Volume (0–100)</label>
-    <input type="number" id="display_volume" name="display_volume" value="{{ frame.display.get('display_volume', '') }}"
-           min="0" max="100" placeholder="Default ({{ cfg.display.volume }})">
-    <p class="muted">Also set from the frame itself: tap the slideshow, then the gear.</p>
-    {% endif %}
-    {% endif %}
-
-    {% if frame.is_kiosk %}
-    <h2 style="margin-top:24px">Screen</h2>
-    <p class="muted">The agent app on the frame applies these itself, also while this server is off.
-      Leave a setting on "Default" to use the one in <a href="{{ url_for('settings') }}">settings</a>.</p>
-    {{ screen_fields(frame.display, screen_choices, cfg) }}
-    {% endif %}
-
-    <p style="margin-top:18px"><button type="submit">{{ "Add frame" if is_new else "Save" }}</button>
-      <a class="button secondary" href="{{ url_for('index') + '#frames' if is_new else url_for('frame_edit', frame_id=frame.id) }}">Cancel</a></p>
-  </form>
-</section>
-
-  {% if not is_new and frame.kind == "cozyla_adb" %}
-<section id="kiosk">
-  <h2>Kiosk</h2>
+{% if f.kind == "cozyla_adb" %}
+{% set adb_hint = "These use adb, which the agent keeps closed except for 2 minutes after the frame powers on: unplug the frame, plug it back in, and click within 2 minutes." %}
+{% call group("Kiosk", footer=adb_hint if f.is_kiosk else none) %}
   {% if kiosk_job %}
-    <div id="kiosk-job" data-status="{{ url_for('frame_kiosk_status', frame_id=frame.id) }}">
-      <p><b>{{ "Setting up the kiosk" if kiosk_job.action == "setup" else "Restoring the Cozyla app" }}…</b>
-        This takes about a minute; keep the frame on.</p>
-      <progress id="kiosk-progress" max="100" value="{{ kiosk_job.pct }}" style="width:100%"></progress>
-      <p class="muted" id="kiosk-step">{{ kiosk_job.step }}</p>
-      <noscript><p><a href="">Reload</a> to see progress.</p></noscript>
-    </div>
-    <script>
-      (function () {
-        var box = document.getElementById("kiosk-job");
-        function poll() {
-          fetch(box.dataset.status, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (job) {
-            if (!job.action || job.done) { location.reload(); return; }
-            document.getElementById("kiosk-progress").value = job.pct;
-            document.getElementById("kiosk-step").textContent = job.step;
-            setTimeout(poll, 1000);
-          }).catch(function () { setTimeout(poll, 3000); });
-        }
-        setTimeout(poll, 1000);
-      })();
-    </script>
-  {% elif frame.is_kiosk %}
-    <p>This frame runs the reframe slideshow in {{ frame.kiosk.app }}, which is its home screen.
-      The Cozyla app is turned off. The reframe agent on the frame runs its screen and reports its health.</p>
-    <table>
-      <tr><th>Slideshow</th><td><code>{{ kiosk_home }}</code>{% if kiosk_home != frame.kiosk.start_url %}
-        <span class="muted">(played from the frame's own copy; keeps playing while this server is off)</span>{% endif %}</td></tr>
-      <tr><th>Settings password</th><td><details><summary>Show</summary><code>{{ frame.kiosk.password }}</code></details></td></tr>
-      <tr><th>Kiosk app</th><td>{{ frame.kiosk.app }} {{ frame.kiosk.app_version }}</td></tr>
-      <tr><th>Agent</th><td>{{ frame.kiosk.agent_version or "not installed: use Update kiosk settings" }}</td></tr>
-    </table>
-    <p class="muted">To change the kiosk's own settings on the frame, tap the top-left quarter of the
-      screen 10 times quickly, then enter the password.</p>
-    <p class="muted">The buttons below use adb, which the agent keeps closed except for 2 minutes after the
-      frame powers on: unplug the frame, plug it back in, and click within 2 minutes.</p>
-    <div class="actions" style="margin-top:12px">
-      <form class="inline" method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}">
-        <button class="secondary">Update kiosk settings</button></form>
-      <form class="inline" method="post" action="{{ url_for('frame_kiosk_deprovision', frame_id=frame.id) }}"
-            onsubmit='return confirm({{ ("Restore " ~ frame.name ~ " to the Cozyla app? The kiosk app is removed and the frame goes back to how it was before.") | tojson }})'>
-        <button class="danger">Restore the Cozyla app</button></form>
-    </div>
-  {% elif frame.kiosk %}
-    <p class="warn">A kiosk setup didn't finish. Run it again, or restore the frame to how it was.</p>
-    <div class="actions">
-      <form class="inline" method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}"><button>Set up the kiosk again</button></form>
-      <form class="inline" method="post" action="{{ url_for('frame_kiosk_deprovision', frame_id=frame.id) }}"><button class="danger">Restore the Cozyla app</button></form>
-    </div>
+  <div id="kiosk-job" data-status="{{ url_for('frame_kiosk_status', frame_id=f.id) }}">
+    {% call row("Setting up the kiosk" if kiosk_job.action == "setup" else "Restoring the Cozyla app", kiosk_job.step ~ ". This takes about a minute; keep the frame on.") %}
+      <progress id="kiosk-progress" max="100" value="{{ kiosk_job.pct }}"></progress>
+    {% endcall %}
+  </div>
+  {% elif f.is_kiosk %}
+  {{ row("Slideshow", "Keeps playing while this server is off" if kiosk_home != f.kiosk.start_url else none,
+         value="Played from the frame's own copy" if kiosk_home != f.kiosk.start_url else "Played from this server") }}
+  {{ row("Kiosk app", "Its settings open after 10 quick taps on the top-left quarter of the screen", value=f.kiosk.app ~ " " ~ f.kiosk.app_version) }}
+  {{ row("Agent at setup", none if f.kiosk.agent_version else "Use Update kiosk settings to install it", value=f.kiosk.agent_version or "Not installed") }}
+  {% call row("Kiosk settings password") %}<details><summary>Show</summary><code>{{ f.kiosk.password }}</code></details>{% endcall %}
+  {% elif f.kiosk %}
+  {{ row("The kiosk setup didn't finish", "Run it again, or restore the frame to how it was", value="Unfinished", tone="warn") }}
   {% else %}
-    <p>Replace the Cozyla app with the reframe slideshow: reframe installs Webview Kiosk (open source,
-      from F-Droid), makes it the frame's home screen with its settings locked by a password, installs the reframe agent
-      (screen schedule, dark-room sleep, health), and turns off the Cozyla app (its photos, Talking Photo and phone uploads stop). It records how the frame was, so
-      "Restore the Cozyla app" puts it back.</p>
-    <form method="post" action="{{ url_for('frame_kiosk_provision', frame_id=frame.id) }}"
-          onsubmit='return confirm({{ ("Set up " ~ frame.name ~ " as a reframe kiosk? It takes about a minute.") | tojson }})'>
-      <button>Set up as a reframe kiosk</button>
-    </form>
+  {{ row("Use as a reframe kiosk", "Replaces the Cozyla app with the reframe slideshow and agent. Restoring the Cozyla app puts the frame back as it was.") }}
   {% endif %}
-</section>
+{% endcall %}
+{% if not kiosk_job %}
+{% call buttons() %}
+  {% set provision, restore = url_for('frame_kiosk_provision', frame_id=f.id), url_for('frame_kiosk_deprovision', frame_id=f.id) %}
+  {% if f.kiosk %}
+  {{ button("Restore the Cozyla app…", action=restore, style="danger", confirm="Restore " ~ f.name ~ " to the Cozyla app? The kiosk app is removed and the frame goes back to how it was before.") }}
+  {{ button("Update kiosk settings" if f.is_kiosk else "Set up the kiosk again", action=provision) }}
+  {% else %}
+  {{ button("Set up as kiosk…", action=provision, confirm="Set up " ~ f.name ~ " as a reframe kiosk? It installs Webview Kiosk from F-Droid as the home screen, installs the reframe agent and turns off the Cozyla app (its photos, Talking Photo and phone uploads stop). It takes about a minute.") }}
   {% endif %}
+{% endcall %}
+{% endif %}
+{% endif %}
 
-  {% if frame.is_kiosk %}
-<section id="health">
-  <h2>Health</h2>
-  {{ health_details(view.health) }}
-</section>
-  {% if screenshot %}
-<section id="screenshot">
-  <h2>Screenshot</h2>
-  <form method="post" action="{{ url_for('frame_screenshot', frame_id=frame.id) }}">
-    <button class="secondary">Take a screenshot</button>
-    <span class="muted">{{ "Requested, waiting for the frame." if screenshot.requested else "Arrives within a minute (agent 0.3.0 or later; black while the screen is off)." }}</span>
-  </form>
-  {% if screenshot.at %}
-  <p class="muted">Taken {{ clock(screenshot.at) }}</p>
-  {% set src = url_for('frame_screenshot_png', frame_id=frame.id, t=screenshot.at|int) %}
-  <a href="{{ src }}"><img src="{{ src }}" alt="The frame's screen" style="max-width:240px;border:1px solid #ccc"></a>
-  {% endif %}
-</section>
-<section id="reboot">
-  <h2>Reboot</h2>
-  <form method="post" action="{{ url_for('frame_reboot', frame_id=frame.id) }}"
-        onsubmit='return confirm({{ ("Reboot " ~ frame.name ~ "?") | tojson }})'>
-    <button class="secondary">Reboot</button>
-    <span class="muted">{{ "Reboot requested, waiting for the frame." if reboot_requested else "The frame restarts within a minute and is back in about 30 s; adb is open for 2 minutes after it boots, for setup or restore." }}</span>
-  </form>
-</section>
-  {% endif %}
-  {% endif %}
+{% if f.is_kiosk %}
+{% call group("Health") %}
+  {{ health_rows(h) }}
+  {% call row("Screenshot", "Requested, waiting for the frame" if screenshot.requested else ("Taken " ~ clock(screenshot.at) if screenshot.at else "Arrives within a minute; black while the screen is off")) %}
+    {{ button("Take screenshot", action=url_for('frame_screenshot', frame_id=f.id)) }}
+  {% endcall %}
+  {% call row("Reboot", "Reboot requested, waiting for the frame" if reboot_requested else "Back in about 30 seconds, with adb open for 2 minutes") %}
+    {{ button("Reboot…", action=url_for('frame_reboot', frame_id=f.id), confirm="Reboot " ~ f.name ~ "?") }}
+  {% endcall %}
+{% endcall %}
+{% endif %}
 
-  {% if not is_new %}
-  {% set warning = "Remove " ~ frame.name ~ "?" ~ (" Its slideshow link stops working and its copies of the photos are deleted." if frame.kind == "web" else "") %}
-  <form method="post" action="{{ url_for('frame_delete', frame_id=frame.id) }}" style="margin-top:18px"
-        onsubmit='return confirm({{ warning | tojson }})'>
-    <button class="danger">Remove frame</button>
-  </form>
-  {% endif %}
+{% call buttons() %}
+  {{ button("Remove frame…", action=url_for('frame_delete', frame_id=f.id), style="danger",
+            confirm="Remove " ~ f.name ~ "?" ~ (" Its slideshow link stops working and its copies of the photos are deleted." if f.kind == "web" else "")) }}
+{% endcall %}
+
+{% if kiosk_job %}
+<script>
+  (function () {
+    var box = document.getElementById("kiosk-job");
+    function poll() {
+      fetch(box.dataset.status, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (job) {
+        if (!job.action || job.done) { location.reload(); return; }
+        document.getElementById("kiosk-progress").value = job.pct;
+        box.querySelector(".sub").textContent = job.step + ". This takes about a minute; keep the frame on.";
+        setTimeout(poll, 1000);
+      }).catch(function () { setTimeout(poll, 3000); });
+    }
+    setTimeout(poll, 1000);
+  })();
+</script>
+{% endif %}
 {% endblock %}

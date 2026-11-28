@@ -6,6 +6,7 @@ this UI can read the photos the source is authorized for.
 
 import collections
 import hashlib
+import zlib
 import hmac
 import os
 import secrets
@@ -19,8 +20,9 @@ from urllib.parse import urlparse
 import qrcode
 import qrcode.image.svg
 import requests
-from flask import Flask, Response, abort, flash, redirect, render_template, request, send_file, send_from_directory, url_for
+from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_file, send_from_directory, url_for
 from markupsafe import Markup
+from PIL import Image, ImageOps
 
 from . import agent, config, frames, snapshots, sources, sync
 from .frames import kiosk, registry
@@ -78,6 +80,7 @@ def _qr_svg(data: str) -> Markup:
 
 app.jinja_env.globals.update(qr_svg=_qr_svg, duration=agent.duration, clock=agent.clock, sparkline=agent.sparkline,
                               adb_states=agent.ADB_STATES)
+app.jinja_env.filters["hue"] = lambda text: zlib.crc32(text.encode()) % 360
 
 
 def _guard(view):
@@ -114,24 +117,22 @@ def _account(cfg: config.Config) -> Optional[dict[str, Any]]:
     return _account_status(cfg) if cfg.source == "google_ambient" and cfg.has_client else None
 
 
+@app.context_processor
+def _sidebar() -> dict[str, Any]:
+    if request.path.startswith(("/show/", "/agent/")):
+        return {}
+    return {"nav": _views(config.load())}
+
+
 @app.get("/")
 def index():
     cfg = config.load()
-    all_frames = frames.load_all(cfg)
-    albums, albums_error = _all_albums(cfg)
-    run = sync.last_run(cfg)
     return render_template(
         "index.html",
         cfg=cfg,
         account=_account(cfg),
-        login=_login,
-        frames=[_frame_view(cfg, f) for f in all_frames],
-        albums=_album_views(cfg, albums, all_frames),
-        albums_error=albums_error,
-        sync_run=run,
         sync_running=_sync_lock.locked(),
-        sync_failures=[f["frame"] for f in run["frames"] if f["error"] or any(a["failed"] for a in f["albums"])] if run else [],
-        counts=sync.counts(cfg),
+        sync_choices=config.SYNC_CHOICES,
         now=time.time(),
     )
 
@@ -140,30 +141,24 @@ def index():
 def settings():
     cfg = config.load()
     if request.method == "POST":
-        fields = ("source", "client_id", "device_name", "public_url", "sync_minutes", "convert_videos", *config.DISPLAY_KEYS)
-        updates = {k: request.form.get(k, "").strip() for k in fields}
+        updates = {k: request.form[k].strip() for k in ("source", "client_id", "device_name", "public_url", "sync_minutes") if k in request.form}
         try:
-            updates.update({k: "" for k in config.SCREEN_KEYS} | _screen_from_form())
+            updates.update(_settings_from_form())
         except frames.FrameError as e:
             flash(str(e), "error")
-            return redirect(url_for("settings"))
+            return redirect(request.referrer or url_for("settings"))
         # The secret is write-only: blank means keep the current one.
         if request.form.get("client_secret", "").strip():
             updates["client_secret"] = request.form["client_secret"].strip()
         config.save_settings(updates)
-        flash("Settings saved.", "ok")
-        return redirect(url_for("settings"))
-    all_frames = frames.load_all(cfg)
+        return redirect(request.referrer or url_for("settings"))
     return render_template(
         "settings.html",
         cfg=cfg,
         source_kinds=sources.KINDS,
-        display_choices=config.DISPLAY_CHOICES,
-        video_choices=config.VIDEO_CHOICES,
-        screen_choices=config.SCREEN_CHOICES,
-        frames=[_frame_view(cfg, f) for f in all_frames],
-        albums=_album_views(cfg, _all_albums(cfg)[0], all_frames),
+        settings=config.FRAME_SETTINGS,
         account=_account(cfg),
+        login=_login,
         listing=_last_listing,
         latest_diff=snapshots.diff_latest(cfg),
     )
@@ -175,7 +170,7 @@ def album_add():
         a = share_link.add(config.load(), request.form.get("url", ""), request.form.get("name", ""))
     except (share_link.ShareLinkError, requests.RequestException) as e:
         flash(f"Couldn't add the album: {e}", "error")
-        return redirect(url_for("index") + "#albums")
+        return redirect(url_for("index"))
     flash(f"Added {a['name']}. Frames that show every album get it at the next sync.", "ok")
     return redirect(url_for("album_page", album_id=a["id"]))
 
@@ -208,7 +203,7 @@ def album_remove(album_id: str):
         flash(f"Removed {a['name']}. The next sync takes its photos off the frames.", "ok")
     except (share_link.ShareLinkError, local.LocalAlbumError) as e:
         flash(str(e), "error")
-    return redirect(url_for("index") + "#albums")
+    return redirect(url_for("index"))
 
 
 def _local_album(album_id: str) -> tuple[config.Config, dict[str, str]]:
@@ -222,33 +217,13 @@ def _local_album(album_id: str) -> tuple[config.Config, dict[str, str]]:
 @app.get("/albums/<album_id>")
 def album_page(album_id: str):
     cfg = config.load()
-    all_frames = frames.load_all(cfg)
-    album = next((a for a in _album_views(cfg, _all_albums(cfg)[0], all_frames) if a["id"] == album_id), None) or abort(404)
-    items = [{"name": p.name, "video": mime.startswith("video/")} for p, mime in local.files(cfg, album_id)]
-    return render_template("album.html", album=album, frames=all_frames, items=items)
-
-
-@app.post("/albums/<album_id>/frames")
-def album_frames(album_id: str):
-    cfg = config.load()
-    albums, error = _album_choices(cfg, None)
-    if error:
-        # An explicit list made now would leave out the albums the source didn't return.
-        flash(f"Couldn't load albums from the source: {error}", "error")
-        return redirect(url_for("album_page", album_id=album_id))
-    album = next((a for a in albums if a["id"] == album_id), None) or abort(404)
-    ticked = set(request.form.getlist("frame"))
-    all_frames = frames.load_all(cfg)
-    for f in all_frames:
-        if (f.id in ticked) == f.shows(album_id):
-            continue
-        if f.album_ids == {album_id}:
-            flash(f"{f.name} shows only this album; pick another on its page first.", "error")
-            continue
-        _show_album(f, album, f.id in ticked, albums)
-    registry.save_all(cfg, all_frames)
-    flash("Saved.", "ok")
-    return redirect(url_for("album_page", album_id=album_id))
+    album = next((a for a in _views(cfg)["albums"] if a["id"] == album_id), None) or abort(404)
+    if album["kind"] == "local":
+        items = [{"name": p.name, "video": mime.startswith("video/"), "thumb": None if mime.startswith("video/") else _thumb_url(cfg, p),
+                  "url": url_for("album_file", album_id=album_id, name=p.name)} for p, mime in local.files(cfg, album_id)]
+    else:
+        items = [{"name": p.name, "thumb": _thumb_url(cfg, p)} for p in album["photos"] if p.suffix.lower() in IMAGE_SUFFIXES]
+    return render_template("album.html", album=album, items=items)
 
 
 @app.post("/albums/<album_id>/upload")
@@ -313,7 +288,7 @@ def sync_now():
     if not _sync_lock.locked():
         threading.Thread(target=_run_sync, args=("now",), daemon=True).start()
         flash("Sync started.", "ok")
-    return redirect(url_for("index") + "#sync")
+    return redirect(url_for("index"))
 
 
 @app.post("/login/start")
@@ -328,7 +303,7 @@ def login_start():
         if _login is None or not _login.active:
             _login = LoginFlow(cfg, new_device=request.form.get("new_device") == "1")
             _login.start_in_background()
-    return redirect(url_for("index"))
+    return redirect(url_for("settings"))
 
 
 @app.get("/login/status")
@@ -343,7 +318,7 @@ def login_dismiss():
     with _login_lock:
         if _login is not None and not _login.active:
             _login = None
-    return redirect(url_for("index"))
+    return redirect(url_for("settings"))
 
 
 @app.post("/signout")
@@ -357,7 +332,7 @@ def signout():
             cfg.device_file.unlink()
     cfg.token_file.unlink(missing_ok=True)
     flash("Signed out.", "ok")
-    return redirect(url_for("index"))
+    return redirect(url_for("settings"))
 
 
 @app.post("/test/list")
@@ -390,14 +365,84 @@ def test_list():
     return redirect(url_for("settings") + "#test")
 
 
-def _frame_view(cfg: config.Config, frame: registry.FrameConfig) -> dict[str, Any]:
+FRAME_KINDS = {"cozyla_adb": "Cozyla frame", "folder": "Folder", "web": "Browser slideshow"}
+IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+THUMB_DIRS = ("albums", "frames", "agents")
+
+
+def _thumb_url(cfg: config.Config, path: Optional[Path]) -> Optional[str]:
+    if not path:
+        return None
+    return url_for("thumb", rel=path.relative_to(cfg.data_dir).as_posix(), t=int(path.stat().st_mtime))
+
+
+def _first_image(paths) -> Optional[Path]:
+    return next((p for p in paths if p.suffix.lower() in IMAGE_SUFFIXES), None)
+
+
+@app.get("/thumb/<path:rel>")
+def thumb(rel: str):
+    cfg = config.load()
+    src = (cfg.data_dir / rel).resolve()
+    if not src.is_file() or not any(src.is_relative_to((cfg.data_dir / d).resolve()) for d in THUMB_DIRS):
+        abort(404)
+    out = cfg.data_dir / "thumbs" / f"{hashlib.sha1(rel.encode()).hexdigest()}.jpg"
+    if not out.exists() or out.stat().st_mtime < src.stat().st_mtime:
+        out.parent.mkdir(exist_ok=True)
+        with Image.open(src) as img:
+            small = ImageOps.exif_transpose(img)
+            small.thumbnail((240, 240))
+            small.convert("RGB").save(out, "JPEG", quality=80)
+    return send_file(out, max_age=86400)
+
+
+def _views(cfg: config.Config) -> dict[str, Any]:
+    """Every frame and album as the pages and the sidebar show them, built once per request."""
+    if "views" not in g:
+        all_frames = frames.load_all(cfg)
+        albums, error = _all_albums(cfg)
+        run = sync.last_run(cfg)
+        album_views = _album_views(cfg, albums, all_frames)
+        counts = sync.counts(cfg)
+        g.views = {"frames": [_frame_view(cfg, f, run, counts, album_views) for f in all_frames],
+                   "albums": album_views, "albums_error": error, "run": run}
+    return g.views
+
+
+def _frame_status(frame: registry.FrameConfig, health: Optional[dict[str, Any]], synced: Optional[dict[str, Any]]) -> tuple[str, str]:
+    if synced and synced["error"]:
+        return "error", "Sync failed"
+    failed = sum(a["failed"] for a in synced["albums"]) if synced else 0
+    if failed:
+        return "warn", f"{failed} photo{'s' * (failed != 1)} failed to sync"
+    if frame.agent_key:
+        if not health:
+            return "off", "No report yet"
+        return ("ok", "Online") if health["online"] else ("off", f"Offline, seen {agent.duration(health['age'])} ago")
+    return ("ok", "Synced") if synced else ("off", "Not synced yet")
+
+
+def _frame_view(cfg: config.Config, frame: registry.FrameConfig, run: Optional[dict[str, Any]], counts: dict[str, int],
+                albums: list[dict[str, Any]]) -> dict[str, Any]:
+    health = agent.health(cfg, frame) if frame.agent_key else None
+    synced = next((r for r in run["frames"] if r["frame"] == frame.name), None) if run else None
+    shot = agent.screenshot_file(cfg, frame.id)
+    media = registry.web_media_dir(cfg.data_dir, frame.id)
+    own = _first_image(media / m["name"] for m in web_frame.list_media(media))
+    cover = next((a["thumb"] for a in albums if a["thumb"] and frame.shows(a["id"])), None)
+    kind = FRAME_KINDS.get(frame.kind, frame.kind)
+    count, n = counts.get(frame.id, 0), len(frame.albums)
     return {
         "frame": frame,
-        "kind_label": registry.KINDS.get(frame.kind, frame.kind),
-        "display": frames.display_for(cfg, frame),
+        "kind_label": kind,
+        "subtitle": f"{kind}, {count} photos from " + (f"{n} album{'s' * (n != 1)}" if n else "every album"),
+        "status": _frame_status(frame, health, synced),
+        "synced": synced,
+        "count": count,
+        "thumb": _thumb_url(cfg, shot if shot.exists() else own) or cover,
         "slideshow_url": url_for("slideshow", key=frame.key, _external=True) if frame.shows_slideshow else None,
         "check": _frame_checks.get(frame.id),
-        "health": agent.health(cfg, frame) if frame.agent_key else None,
+        "health": health,
     }
 
 
@@ -419,16 +464,18 @@ def _all_albums(cfg: config.Config) -> tuple[list[dict[str, str]], Optional[str]
     return (local.saved_albums(cfg) if error else albums), error
 
 
-ALBUM_KINDS = {"local": "Local", "share_link": "Shared link", "google_ambient": "Google Photos"}
+ALBUM_KINDS = {"local": "Uploaded to this server", "share_link": "Shared Google Photos album", "google_ambient": "Google Photos album"}
 
 
 def _album_views(cfg: config.Config, albums: list[dict[str, str]], all_frames: list[registry.FrameConfig]) -> list[dict[str, Any]]:
-    synced = sync.album_counts(cfg)
+    counts, synced = sync.album_counts(cfg), sync.album_files(cfg)
     views = []
     for a in albums:
         kind = "local" if a["id"].startswith(local.PREFIX) else cfg.source
-        views.append({**a, "kind": kind, "kind_label": ALBUM_KINDS[kind],
-                      "count": len(local.files(cfg, a["id"])) if kind == "local" else synced.get(a["id"]),
+        photos = [p for p, _ in local.files(cfg, a["id"])] if kind == "local" else synced.get(a["id"], [])
+        views.append({**a, "kind": kind, "kind_label": ALBUM_KINDS[kind], "photos": photos,
+                      "count": len(photos) if kind == "local" else counts.get(a["id"]),
+                      "thumb": _thumb_url(cfg, _first_image(photos)),
                       "frames": [f for f in all_frames if f.shows(a["id"])]})
     return views
 
@@ -441,60 +488,47 @@ def _show_album(frame: registry.FrameConfig, album: dict[str, str], show: bool, 
         frame.albums.append(album)
 
 
-def _screen_from_form() -> dict[str, str]:
-    """Screen settings from a form; blank fields are left out (the default)."""
-    form = request.form
+def _settings_from_form() -> dict[str, str]:
+    """The frame settings a form carries, validated; settings it doesn't carry are left out."""
     values = {}
-    mode = form.get("screen_schedule_mode", "")
-    if mode == "always":
-        values["screen_schedule"] = "always"
-    elif mode == "off":
-        values["screen_schedule"] = f"{form.get('screen_off_at', '')}-{form.get('screen_on_at', '')}"
-    for key in config.SCREEN_KEYS[1:]:
-        if form.get(key, "").strip():
-            values[key] = form[key].strip()
-    for key, value in values.items():
-        error = config.check_screen(key, value)
-        if error:
-            raise frames.FrameError(error)
+    for setting in config.FRAME_SETTINGS:
+        value = setting.from_form(request.form)
+        if value is not None:
+            error = setting.check(value)
+            if error:
+                raise frames.FrameError(error)
+            values[setting.key] = value
     return values
 
 
-def _frame_from_form(frame: registry.FrameConfig) -> registry.FrameConfig:
-    form = request.form
-    frame.name = form.get("name", "").strip()
-    frame.address = form.get("address", "").strip()
-    frame.folder = form.get("folder", "").strip()
-    frame.display = {k: form.get(k, "").strip() for k in (*config.DISPLAY_KEYS, "convert_videos") if form.get(k, "").strip()}
-    if frame.is_kiosk:
-        frame.display.update(_screen_from_form())
+def _frame_from_form(cfg: config.Config, frame: registry.FrameConfig) -> registry.FrameConfig:
+    for field in ("name", "address", "folder"):
+        if field in request.form:
+            setattr(frame, field, request.form[field].strip())
+    frame.display.update(_settings_from_form())
+    # Only values that differ from the default are the frame's own.
+    frame.display = {k: v for k, v in frame.display.items() if v and v != cfg.defaults.get(k)}
     return frame
 
 
-def _frame_form(cfg: config.Config, frame: registry.FrameConfig, is_new: bool):
-    albums, albums_error = _album_choices(cfg, frame)
+def _frame_form(cfg: config.Config, frame: registry.FrameConfig):
     job = _kiosk_jobs.get(frame.id)
     if job and job.get("done"):
         _kiosk_jobs.pop(frame.id, None)
         flash(job.get("error") or job.get("result", ""), "error" if job.get("error") else "ok")
         job = None
+    views = _views(cfg)
+    by_id = {a["id"]: a for a in views["albums"]}
+    choices, albums_error = _album_choices(cfg, frame)
     return render_template(
         "frame.html",
-        cfg=cfg,
         frame=frame,
+        view=next(v for v in views["frames"] if v["frame"].id == frame.id),
         kiosk_job=job,
-        is_new=is_new,
-        kinds=registry.KINDS,
-        view=None if is_new else _frame_view(cfg, frame),
-        shown=[a for a in albums if a["id"] in frame.album_ids],
-        picker=[a for a in albums if a["id"] not in frame.album_ids],
+        albums=[{**by_id.get(a["id"], {}), **a} for a in choices],
         albums_error=albums_error,
-        sync_run=sync.last_run(cfg),
-        count=sync.counts(cfg).get(frame.id, 0),
-        display_choices=config.DISPLAY_CHOICES,
-        video_choices=config.VIDEO_CHOICES,
-        screen_choices=config.SCREEN_CHOICES,
-        screen=frames.screen_for(cfg, frame),
+        settings=config.settings_for(frame),
+        values=registry.settings(cfg, frame),
         screenshot=agent.screenshot(cfg, frame) if frame.agent_key else None,
         reboot_requested=bool(frame.agent_key) and agent.requested(cfg, frame, "reboot"),
         kiosk_home=agent.home_url(cfg, frame) if frame.is_kiosk else None,
@@ -508,51 +542,64 @@ def frame_new():
     frame = registry.FrameConfig(id="", name="", kind=kind if kind in registry.KINDS else "web")
     if request.method == "POST":
         try:
-            _frame_from_form(frame)
-            fields = {k: getattr(frame, k) for k in ("address", "folder", "display")}
-            added = registry.add(cfg, frame.name, frame.kind, **fields)
+            _frame_from_form(cfg, frame)
+            added = registry.add(cfg, frame.name, frame.kind, address=frame.address, folder=frame.folder)
         except frames.FrameError as e:
             flash(str(e), "error")
-            return _frame_form(cfg, frame, is_new=True)
-        flash(f"Added {added.name}. It shows every album; pick some below to show only those.", "ok")
-        return redirect(url_for("frame_edit", frame_id=added.id))
-    return _frame_form(cfg, frame, is_new=True)
+        else:
+            flash(f"Added {added.name}. It shows every album; pick some below to show only those.", "ok")
+            return redirect(url_for("frame_edit", frame_id=added.id))
+    return render_template("frame_new.html", frame=frame, kinds=registry.KINDS)
+
+
+def _find_frame(cfg: config.Config, frame_id: str) -> registry.FrameConfig:
+    try:
+        return registry.find(frames.load_all(cfg), frame_id)
+    except frames.FrameError:
+        abort(404)
 
 
 @app.route("/frames/<frame_id>", methods=["GET", "POST"])
 def frame_edit(frame_id: str):
     cfg = config.load()
-    try:
-        frame = registry.find(frames.load_all(cfg), frame_id)
-    except frames.FrameError:
-        abort(404)
+    frame = _find_frame(cfg, frame_id)
     if request.method == "POST":
         try:
-            _frame_from_form(frame)
+            _frame_from_form(cfg, frame)
             registry.update(cfg, frame)
         except frames.FrameError as e:
             flash(str(e), "error")
-            return _frame_form(cfg, frame, is_new=False)
-        flash(f"Saved {frame.name}.", "ok")
-        return redirect(url_for("frame_edit", frame_id=frame_id))
-    return _frame_form(cfg, frame, is_new=False)
+        return redirect(request.referrer or url_for("frame_edit", frame_id=frame_id))
+    return _frame_form(cfg, frame)
+
+
+def _switched(name: str) -> bool:
+    # A switch posts a hidden "no" before its checkbox's "yes".
+    return request.form.getlist(name)[-1:] == ["yes"]
 
 
 @app.post("/frames/<frame_id>/albums")
 def frame_albums(frame_id: str):
+    """Show every album, or show or hide one; the frame and album pages both post here."""
     cfg = config.load()
-    try:
-        frame = registry.find(frames.load_all(cfg), frame_id)
-    except frames.FrameError:
-        abort(404)
-    albums, _ = _album_choices(cfg, frame)
-    album_id = request.form.get("add") or request.form.get("remove")
-    album = next((a for a in albums if a["id"] == album_id), None) or abort(404)
-    _show_album(frame, album, "add" in request.form, albums)
-    registry.update(cfg, frame)
-    if not frame.albums:
-        flash(f"{frame.name} shows every album again.", "ok")
-    return redirect(url_for("frame_edit", frame_id=frame_id) + "#albums")
+    frame = _find_frame(cfg, frame_id)
+    back = request.referrer or url_for("frame_edit", frame_id=frame_id)
+    albums, error = _album_choices(cfg, frame)
+    every = "every" in request.form
+    album = None if every else next((a for a in albums if a["id"] == request.form.get("album")), None) or abort(404)
+    on = _switched("every" if every else "show")
+    if error and not on and (every or not frame.albums):
+        # A list made now would leave out the albums the source didn't return.
+        flash(f"Couldn't load albums from the source: {error}", "error")
+    elif album and not on and frame.album_ids == {album["id"]}:
+        flash(f"{frame.name} shows only this album; turn on another album or Every album first.", "error")
+    else:
+        if every:
+            frame.albums = [] if on else albums
+        else:
+            _show_album(frame, album, on, albums)
+        registry.update(cfg, frame)
+    return redirect(back)
 
 
 @app.post("/frames/<frame_id>/delete")
@@ -565,31 +612,25 @@ def frame_delete(frame_id: str):
         return redirect(url_for("frame_edit", frame_id=frame_id))
     _frame_checks.pop(frame_id, None)
     flash("Frame removed.", "ok")
-    return redirect(url_for("index") + "#frames")
+    return redirect(url_for("index"))
 
 
 @app.post("/frames/<frame_id>/screenshot")
 def frame_screenshot(frame_id: str):
     cfg = config.load()
-    try:
-        frame = registry.find(frames.load_all(cfg), frame_id)
-    except frames.FrameError:
-        abort(404)
+    frame = _find_frame(cfg, frame_id)
     agent.request(cfg, frame, "screenshot")
     flash("Asked the frame for a screenshot. It arrives within a minute; reload this page.", "ok")
-    return redirect(url_for("frame_edit", frame_id=frame_id) + "#screenshot")
+    return redirect(url_for("frame_edit", frame_id=frame_id))
 
 
 @app.post("/frames/<frame_id>/reboot")
 def frame_reboot(frame_id: str):
     cfg = config.load()
-    try:
-        frame = registry.find(frames.load_all(cfg), frame_id)
-    except frames.FrameError:
-        abort(404)
+    frame = _find_frame(cfg, frame_id)
     agent.request(cfg, frame, "reboot")
     flash("Asked the frame to reboot.", "ok")
-    return redirect(url_for("frame_edit", frame_id=frame_id) + "#reboot")
+    return redirect(url_for("frame_edit", frame_id=frame_id))
 
 
 @app.get("/frames/<frame_id>/screenshot.png")
@@ -606,7 +647,7 @@ def frame_check(frame_id: str):
         _frame_checks[frame_id] = {"ok": True, "info": frames.build(cfg, frame).check()}
     except Exception as e:
         _frame_checks[frame_id] = {"ok": False, "error": str(e)}
-    return redirect(url_for("frame_edit", frame_id=frame_id) + "#check")
+    return redirect(url_for("frame_edit", frame_id=frame_id))
 
 
 def _public_base(cfg: config.Config) -> str:
@@ -655,10 +696,7 @@ def _run_kiosk_job(cfg: config.Config, frame: registry.FrameConfig, deprovisioni
 
 def _kiosk_action(frame_id: str, deprovisioning: bool):
     cfg = config.load()
-    try:
-        frame = registry.find(frames.load_all(cfg), frame_id)
-    except frames.FrameError:
-        abort(404)
+    frame = _find_frame(cfg, frame_id)
     if frame.kind != "cozyla_adb":
         abort(400)
     server = ""

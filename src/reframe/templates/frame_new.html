@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_ui.html" import group, buttons, button, select_row, text_row %}
+{% block heading %}Add a frame{% endblock %}
+{% block content %}
+<form method="get" data-auto>{% call group() %}{{ select_row("Type", "kind", kinds, frame.kind) }}{% endcall %}</form>
+<form method="post">
+  <input type="hidden" name="kind" value="{{ frame.kind }}">
+  {% call group(footer="A path inside the container; mount the share or drive there in docker-compose.yml." if frame.kind == "folder" else
+                ("Each screen opens its own slideshow link, shown on the frame's page once it's added." if frame.kind == "web" else none)) %}
+    {{ text_row("Name", "name", frame.name, placeholder="Living room") }}
+    {% if frame.kind == "cozyla_adb" %}{{ text_row("adb address", "address", frame.address, placeholder="192.168.1.50:5555") }}
+    {% elif frame.kind == "folder" %}{{ text_row("Folder", "folder", frame.folder, placeholder="/frame") }}{% endif %}
+  {% endcall %}
+  {% call buttons() %}{{ button("Cancel", href=url_for('index')) }}<button class="btn primary">Add frame</button>{% endcall %}
+</form>
+{% endblock %}

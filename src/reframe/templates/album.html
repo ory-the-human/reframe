@@ -1,70 +1,59 @@
 {% extends "base.html" %}
-{% block width %}wide{% endblock %}
+{% from "_ui.html" import group, row, thumb, header, buttons, button, dialog, toggle, text_row %}
+{% block heading %}{{ album.name }}{% endblock %}
 {% block content %}
-<section>
-  <h2>{{ album.name }} <span class="badge muted">{{ album.kind_label }}</span></h2>
-  <p class="muted">id <code>{{ album.id }}</code>{% if album.count is not none %} · {{ album.count }} photos{% endif %}
-    · <a href="{{ url_for('index') }}#albums">All albums</a></p>
-</section>
-
-<section id="frames">
-  <h2>Frames</h2>
-  {% if frames %}
-  <form method="post" action="{{ url_for('album_frames', album_id=album.id) }}">
-    <div class="checks">
-    {% for f in frames %}
-      <label><input type="checkbox" name="frame" value="{{ f.id }}" {{ "checked" if f.shows(album.id) }}> {{ f.name }}
-        {%- if not f.albums %} <span class="muted">(all albums)</span>{% endif %}</label>
-    {% endfor %}
-    </div>
-    <p class="muted">A frame that shows all albums shows this one too; unticking it makes it show only the other albums.</p>
-    <p><button>Save</button></p>
-  </form>
-  {% else %}
-  <p class="muted">No frames yet. <a href="{{ url_for('frame_new') }}">Add a frame</a>.</p>
-  {% endif %}
-</section>
-
-<section id="settings">
-  <h2>Settings</h2>
-  {% if album.kind == "google_ambient" %}
-  <p class="muted">Rename or remove it in Google Photos.</p>
-  {% else %}
-  <form class="add" method="post" action="{{ url_for('album_rename', album_id=album.id) }}">
-    <label for="name">Name</label>
-    <input type="text" id="name" name="name" value="{{ album.name }}" required>
-    <button class="secondary">Rename</button>
-  </form>
-  <form method="post" action="{{ url_for('album_remove', album_id=album.id) }}" style="margin-top:14px"
-        onsubmit='return confirm({{ ("Remove " ~ album.name ~ "? The next sync takes its photos off the frames." ~ (" Its files on this server are deleted." if album.kind == "local" else "")) | tojson }})'>
-    <button class="danger">Remove album</button></form>
-  {% endif %}
-</section>
+{% set editable = album.kind != "google_ambient" %}
+{% call header(album.name, album.kind_label ~ (", %d photos"|format(album.count) if album.count is not none else ""), thumb("album", album.id, album.thumb, "l")) %}
+  {% if editable %}{{ button("Rename…", dialog="rename") }}{% endif %}
+{% endcall %}
+{% if editable %}
+{% call dialog("rename", "Rename album", url_for('album_rename', album_id=album.id), "Rename") %}
+  <div class="group">{{ text_row("Name", "name", album.name) }}</div>
+{% endcall %}
+{% endif %}
 
 {% if album.kind == "local" %}
-<section id="photos">
-  <h2>Photos</h2>
-  <form method="post" action="{{ url_for('album_upload', album_id=album.id) }}" enctype="multipart/form-data">
-    <label for="files">Add photos and videos</label>
-    <input type="file" id="files" name="files" multiple accept="image/*,video/*" required>
-    <p style="margin-top:12px"><button>Upload</button></p>
-  </form>
-  <p class="muted">Files copied into <code>data/albums/{{ album.id }}/</code> show up here too.</p>
+{% call group("Photos", footer="Files copied into data/albums/" ~ album.id ~ "/ on the server show up here too. Frames get new photos at the next sync.") %}
   {% if items %}
-  <div class="grid" style="margin-top:14px">
+  <div class="grid">
     {% for i in items %}
-    <div>
-      {% if i.video %}<video src="{{ url_for('album_file', album_id=album.id, name=i.name) }}" preload="metadata" muted controls></video>
-      {% else %}<img src="{{ url_for('album_file', album_id=album.id, name=i.name) }}" loading="lazy" alt="{{ i.name }}">{% endif %}
-      <form method="post" action="{{ url_for('album_file_delete', album_id=album.id, name=i.name) }}"
-            onsubmit='return confirm({{ ("Delete " ~ i.name ~ "? The next sync takes it off the frames.") | tojson }})'>
-        <button class="danger">Delete</button></form>
+    <div class="tile">
+      {% if i.video %}<video src="{{ i.url }}" preload="metadata" muted></video>
+      {% else %}<a href="{{ i.url }}"><img src="{{ i.thumb }}" loading="lazy" alt="{{ i.name }}"></a>{% endif %}
+      <form method="post" action="{{ url_for('album_file_delete', album_id=album.id, name=i.name) }}" data-confirm="Delete {{ i.name }}? The next sync takes it off the frames.">
+        <button title="Delete {{ i.name }}" aria-label="Delete {{ i.name }}">×</button></form>
     </div>
     {% endfor %}
   </div>
   {% else %}
-  <p class="muted">Nothing here yet.</p>
+  {{ row("No photos yet", "Add photos and videos from this computer or phone") }}
   {% endif %}
-</section>
+{% endcall %}
+{% call buttons() %}
+  <form method="post" action="{{ url_for('album_upload', album_id=album.id) }}" enctype="multipart/form-data" data-auto>
+    <label class="btn file">Add photos…<input type="file" name="files" multiple accept="image/*,video/*"></label>
+  </form>
+{% endcall %}
+{% elif items %}
+{% call group("Photos", footer="The photos this server keeps for its browser and kiosk frames.") %}
+  <div class="grid">{% for i in items %}<div class="tile"><img src="{{ i.thumb }}" loading="lazy" alt=""></div>{% endfor %}</div>
+{% endcall %}
+{% endif %}
+
+{% call group("Shown on", footer="Turning this album off on a frame that shows every album makes it show only the other albums.") %}
+  {% for v in nav.frames %}
+  {% set f = v.frame %}
+  {{ toggle(url_for('frame_albums', frame_id=f.id), f.name, "show", f.shows(album.id), {"album": album.id}, v.kind_label,
+            thumb("frame", f.id, v.thumb), f.albums|length == 1 and album.id in f.album_ids) }}
+  {% else %}
+  {{ row("No frames yet", href=url_for('frame_new')) }}
+  {% endfor %}
+{% endcall %}
+
+{% if editable %}
+{% call buttons() %}
+  {{ button("Remove album…", action=url_for('album_remove', album_id=album.id), style="danger",
+            confirm="Remove " ~ album.name ~ "? The next sync takes its photos off the frames." ~ (" Its files on this server are deleted." if album.kind == "local" else "")) }}
+{% endcall %}
 {% endif %}
 {% endblock %}
