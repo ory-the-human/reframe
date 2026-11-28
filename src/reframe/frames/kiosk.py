@@ -34,11 +34,11 @@ KIOSK_PREFS = f"{KIOSK_PREFS_DIR}/user_settings.xml"
 COZYLA_PKG = "com.cozyla.frame"
 
 AGENT_PKG = "app.reframe.agent"
-AGENT_VERSION = "0.4.0"
+AGENT_VERSION = "0.4.1"
 # The published release of the agent (agent/release.sh writes these). AGENT_APK
 # overrides it with a local build (agent/build.sh).
-AGENT_APK_URL = "https://github.com/ory-the-human/reframe/releases/download/agent-v0.4.0/reframe-agent-0.4.0.apk"
-AGENT_APK_SHA256 = "8d75471d58befdd5e1d0678934ecf7e46c4d0ef8fe4bbc8b4dbeb850fbaf7c9b"
+AGENT_APK_URL = "https://github.com/ory-the-human/reframe/releases/download/agent-v0.4.1/reframe-agent-0.4.1.apk"
+AGENT_APK_SHA256 = "d7d5f2c4c9bd8cc7e2a2d26fdd6c44fd3e7a26c61198e33ac0230bd2b3b6585a"
 # Allwinner's BackgroundManagerService force-stops apps that aren't on this
 # comma-separated list (a system setting) soon after the screen goes off.
 KEEP_ALIVE_SETTING = "kill_background_services_list"
