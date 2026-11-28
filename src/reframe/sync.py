@@ -286,15 +286,24 @@ def last_run(cfg: Config) -> Optional[dict[str, Any]]:
         db.close()
 
 
-def counts(cfg: Config) -> dict[str, int]:
-    """Items on each frame (by frame id)."""
+def _grouped(cfg: Config, query: str) -> dict[str, int]:
     if not (cfg.data_dir / "state.sqlite").exists():
         return {}
     db = _db(cfg)
     try:
-        return {r[0]: r[1] for r in db.execute("SELECT frame_id, COUNT(DISTINCT frame_path) FROM items GROUP BY frame_id")}
+        return {r[0]: r[1] for r in db.execute(query)}
     finally:
         db.close()
+
+
+def counts(cfg: Config) -> dict[str, int]:
+    """Items on each frame (by frame id)."""
+    return _grouped(cfg, "SELECT frame_id, COUNT(DISTINCT frame_path) FROM items GROUP BY frame_id")
+
+
+def album_counts(cfg: Config) -> dict[str, int]:
+    """Items synced from each album (by album id), over all frames."""
+    return _grouped(cfg, "SELECT album_id, COUNT(DISTINCT media_id) FROM items GROUP BY album_id")
 
 
 def taken(cfg: Config, frame_id: str) -> dict[str, str]:

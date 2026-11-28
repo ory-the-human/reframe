@@ -13,7 +13,7 @@ scheduled), **idea** (worth recording, undecided).
 |---|---|---|
 | Second source: Google Photos share link | done | `share_link`, the default: shared albums added by their links in Settings → Albums or with `reframe albums`, kept in `/data/albums.json`. The link is a secret and Google can change the page, so anything unexpected makes a listing incomplete and nothing is removed. Immich stays an option for later. |
 | Local albums | done | Albums kept on the server in `/data/albums/<id>/`, created in Settings → Albums and filled by uploading on their page (or copying files into the folder), with any source. Photos are fitted and written as JPEG with Pillow; a folder listing is trusted, so deleted files leave frames at the next sync. |
-| Sync engine (pass-through, safe removal) | done | PLAN.md phase 2. Uses only the `Source` and `Frame` interfaces. The web server runs it every `SYNC_MINUTES`; Sync now and the last run's results are on the dashboard, and `reframe sync [--dry-run]` runs it by hand. |
+| Sync engine (pass-through, safe removal) | done | PLAN.md phase 2. Uses only the `Source` and `Frame` interfaces. The web server runs it every `SYNC_MINUTES`; Sync now and the last run's results are on the dashboard and each frame's page, and `reframe sync [--dry-run]` runs it by hand. |
 | Remove `reframe frame-put` | done | A testing tool from before the sync engine, which calls the same `Frame.put` itself. `frame-check` stays. |
 | Show synced photos in the Cozyla app | idea | Works only with the frame kept offline ([cozyla-frame.md](cozyla-frame.md)); the kiosk below replaced it. |
 | Cozyla frames as kiosks | done | One-click setup and exact restore from the frame's page ([decisions.md](decisions.md), entry 7). |

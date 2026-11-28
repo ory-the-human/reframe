@@ -1,44 +1,7 @@
 {% extends "base.html" %}
 {% from "_screen.html" import screen_fields %}
 {% block content %}
-<section id="albums">
-  <h2>Albums</h2>
-  {% if albums %}
-  <table>
-    <tr><th>Name</th><th>Id</th><th></th></tr>
-    {% for a in albums %}
-    <tr><td><form class="inline" method="post" action="{{ url_for('album_rename', album_id=a.id) }}">
-          <input type="text" name="name" value="{{ a.name }}" aria-label="Name" required></form></td>
-      <td><code>{{ a.id }}</code></td>
-      <td>{% if a.id.startswith("local-") %}<a class="button secondary" href="{{ url_for('album_page', album_id=a.id) }}">Photos</a>{% endif %}
-        <form class="inline" method="post" action="{{ url_for('album_remove', album_id=a.id) }}"
-                onsubmit='return confirm({{ ("Remove " ~ a.name ~ "? The next sync takes its photos off the frames." ~ (" Its files on this server are deleted." if a.id.startswith("local-") else "")) | tojson }})'>
-        <button class="danger">Remove</button></form></td></tr>
-    {% endfor %}
-  </table>
-  <p class="muted">Edit a name and press Enter to rename it.</p>
-  {% else %}
-  <p class="muted">No albums yet.</p>
-  {% endif %}
-  <form method="post" action="{{ url_for('album_new') }}">
-    <label for="local_name">New local album</label>
-    <input type="text" id="local_name" name="name" required placeholder="Holidays">
-    <p class="muted">Kept on this server in <code>data/albums/</code>; upload photos and videos on its page.</p>
-    <p style="margin-top:12px"><button>Create album</button></p>
-  </form>
-  {% if cfg.source == "share_link" %}
-  <form method="post" action="{{ url_for('album_add') }}">
-    <label for="url">Share link</label>
-    <input type="url" id="url" name="url" required placeholder="https://photos.app.goo.gl/…">
-    <label for="name">Name (optional, default the album's title)</label>
-    <input type="text" id="name" name="name">
-    <p class="muted">In Google Photos, open the album, then Share → Create link. Anyone with the link
-      can see the album; turning link sharing off revokes it.</p>
-    <p style="margin-top:12px"><button>Add album</button></p>
-  </form>
-  {% endif %}
-</section>
-<section>
+<section id="global">
   <form method="post">
     <h2>Source</h2>
     <label for="source">Photo source</label>
@@ -100,4 +63,75 @@
     <p style="margin-top:18px"><button type="submit">Save</button></p>
   </form>
 </section>
+<section id="frames">
+  <h2>Frames <a class="button secondary end" href="{{ url_for('frame_new') }}">Add a frame</a></h2>
+  {% if frames %}
+  <table>
+    {% for v in frames %}
+    <tr><td><a href="{{ url_for('frame_edit', frame_id=v.frame.id) }}">{{ v.frame.name }}</a></td>
+      <td class="muted">{{ v.kind_label.split(" (")[0] }}{% if v.frame.is_kiosk %} · kiosk{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted">Each frame's albums, display and screen settings are on its page.</p>
+  {% else %}<p class="muted">No frames yet.</p>{% endif %}
+</section>
+<section id="albums">
+  <h2>Albums</h2>
+  {% if albums %}
+  <table>
+    {% for a in albums %}
+    <tr><td><a href="{{ url_for('album_page', album_id=a.id) }}">{{ a.name }}</a></td><td class="muted">{{ a.kind_label }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted">Rename, remove and pick frames on each album's page; add albums on the <a href="{{ url_for('index') }}#albums">dashboard</a>.</p>
+  {% else %}<p class="muted">No albums yet. Add them on the <a href="{{ url_for('index') }}#albums">dashboard</a>.</p>{% endif %}
+</section>
+{% if cfg.source != "google_ambient" or (account and account.signed_in and account.device) %}
+<section id="test">
+  <h2>Listing test</h2>
+  <p class="muted">Lists every selected album in full and saves a snapshot.
+    To test change detection: run it, add or remove a photo in an album, then run it again.</p>
+  <form method="post" action="{{ url_for('test_list') }}" class="check">
+    <p>Download samples per album <input type="number" name="download" value="0" min="0" max="10"></p>
+    <p><button>Run listing</button></p>
+  </form>
+
+  {% if listing %}
+    <h2 style="margin-top:18px">Last run <span class="muted" style="font-weight:400">{{ listing.taken_at }}</span></h2>
+    <table>
+      <tr><th>Album</th><th>Items</th><th>Types</th></tr>
+      {% for s in listing.albums %}
+      <tr>
+        <td>{{ s.name }}</td>
+        <td>{{ s.count }}{% if not s.complete %} <span class="warn">(incomplete)</span>{% endif %}</td>
+        <td>{% for m, n in s.mimes %}{{ m }} × {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      </tr>
+      {% for r in s.samples %}
+      <tr><td></td><td colspan="2" class="muted">
+        {% if r.file %}sample {{ r.file }} · {{ r.kb }} KB
+        {% else %}<span class="error">sample download failed: {{ r.error }}</span>{% endif %}
+      </td></tr>
+      {% endfor %}
+      {% endfor %}
+    </table>
+  {% endif %}
+
+  {% if latest_diff %}
+    {% set old_path, new_path, changes = latest_diff %}
+    <h2 style="margin-top:18px">Changes between the last two snapshots</h2>
+    <p class="muted"><code>{{ old_path.name }}</code> → <code>{{ new_path.name }}</code></p>
+    {% for c in changes %}
+      {% if c.only_in %}
+        <p><b>{{ c.album }}</b>: only in the {{ c.only_in }} snapshot</p>
+      {% else %}
+        <p><b>{{ c.album }}</b>: {{ c.old_count }} → {{ c.new_count }} items,
+          <span class="ok">+{{ c.added|length }}</span> <span class="error">−{{ c.removed|length }}</span>
+          {% if not c.reliable %}<span class="warn">(a listing was incomplete, so removals are unreliable)</span>{% endif %}</p>
+        {% if c.added %}<ul class="ids">{% for i in c.added %}<li class="ok"><code>{{ i }}</code></li>{% endfor %}</ul>{% endif %}
+        {% if c.removed %}<ul class="ids">{% for i in c.removed %}<li class="error"><code>{{ i }}</code></li>{% endfor %}</ul>{% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+</section>
+{% endif %}
 {% endblock %}

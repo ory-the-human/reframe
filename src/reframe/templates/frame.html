@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_screen.html" import screen_fields %}
-{% from "_health.html" import health_details %}
+{% from "_health.html" import health_details, health_line %}
 {% block content %}
 <section>
   <h2>{{ "Add a frame" if is_new else frame.name }}</h2>
@@ -13,7 +13,75 @@
     <noscript><button class="secondary">Change type</button></noscript>
   </form>
   {% else %}
-  <p class="muted">{{ kinds[frame.kind] }} · id <code>{{ frame.id }}</code></p>
+  <p class="muted">{{ kinds[frame.kind] }}{% if frame.kind != "web" %} · <code>{{ frame.target }}</code>{% endif %}
+    · id <code>{{ frame.id }}</code> · {{ count }} photos</p>
+  {% if frame.agent_key %}<p>{{ health_line(view.health) }}</p>{% endif %}
+  {% if frame.kind == "web" %}
+  <div class="row" style="margin:8px 0">
+    <a class="code" href="{{ view.slideshow_url }}" target="_blank" rel="noopener">{{ view.slideshow_url }}</a>
+    <div class="qr small">{{ qr_svg(view.slideshow_url) }}</div>
+  </div>
+  <p class="muted">The slideshow link is the password for this screen, so share it only with the screen.
+    A screen can override the display settings by adding e.g.
+    <code>?interval=10&amp;layout=pair&amp;orientation=portrait&amp;shuffle=no&amp;fill=black</code> to its link.</p>
+  {% elif frame.kind == "cozyla_adb" and not frame.is_kiosk %}
+  <p class="muted">The first connection shows an "Allow USB debugging?" prompt on the frame. Tick "Always allow", then check again.</p>
+  {% endif %}
+  <form id="check" method="post" action="{{ url_for('frame_check', frame_id=frame.id) }}" style="margin-top:8px">
+    <button class="secondary">Check</button> <span class="muted">Confirms this server can reach the frame.</span></form>
+  {% if view.check %}
+    {% if view.check.ok %}
+      <table style="margin-top:6px">{% for k, val in view.check.info.items() %}<tr><th>{{ k }}</th><td>{{ val }}</td></tr>{% endfor %}</table>
+    {% else %}
+      <p class="error">{{ view.check.error }}</p>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section id="albums">
+  <h2>Albums {% if shown %}<span class="muted" style="font-weight:400">{{ shown|length }}</span>{% else %}<span class="badge ok">All albums</span>{% endif %}</h2>
+  {% if albums_error %}<p class="warn">Couldn't load albums from the source: {{ albums_error }}</p>{% endif %}
+  {% if shown %}
+  <table class="mid">
+    {% for a in shown %}
+    <tr><td><a href="{{ url_for('album_page', album_id=a.id) }}">{{ a.name }}</a></td>
+      <td style="text-align:right"><form class="inline" method="post" action="{{ url_for('frame_albums', frame_id=frame.id) }}">
+        <button class="secondary" name="remove" value="{{ a.id }}">Remove</button></form></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>This frame shows every album, also ones added later. Add an album below to show only the ones you pick.</p>
+  {% endif %}
+  {% if picker %}
+  <form class="add" method="post" action="{{ url_for('frame_albums', frame_id=frame.id) }}">
+    <label for="add">{{ "Add" if shown else "Show only" }}</label>
+    <select id="add" name="add">{% for a in picker %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+    <button>Add</button>
+  </form>
+  {% elif not shown and not albums_error %}
+  <p class="muted">There are no albums yet: add them on the <a href="{{ url_for('index') }}#albums">dashboard</a>.</p>
+  {% endif %}
+</section>
+
+{% set run = (sync_run.frames | selectattr("frame", "equalto", frame.name) | first) if sync_run else none %}
+{% if run %}
+<section id="sync">
+  <h2>Last sync <span class="muted" style="font-weight:400">{{ clock(sync_run.finished) }}</span></h2>
+  {% if run.error %}<p class="error">{{ run.error }}</p>{% endif %}
+  <table>
+    {% for a in run.albums %}
+    <tr><td>{{ a.album }}</td>
+      <td><span class="ok">+{{ a.added }}</span> <span class="error">−{{ a.removed }}</span>, {{ a.kept }} kept
+        {%- if a.waiting %}, <span class="warn">{{ a.waiting }} missing, kept for now</span>{% endif %}
+        {%- if a.failed %}, <span class="error">{{ a.failed }} failed</span>{% endif %}
+        {%- if a.note %} <span class="muted">({{ a.note }})</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<section id="settings">
+  <h2>Settings</h2>
   {% endif %}
 
   <form method="post">
@@ -28,22 +96,6 @@
     <label for="folder">Folder</label>
     <input type="text" id="folder" name="folder" value="{{ frame.folder }}" placeholder="/frame">
     <p class="muted">A path inside the container; mount the share or drive there in docker-compose.yml.</p>
-    {% else %}
-    <p class="muted" style="margin-top:12px">{{ "The slideshow link appears on the dashboard once the frame is added." if is_new else "The slideshow link is on the dashboard." }}</p>
-    {% endif %}
-
-    <h2 style="margin-top:24px">Albums</h2>
-    {% if albums_error %}<p class="warn">Couldn't load albums from the source: {{ albums_error }}</p>{% endif %}
-    {% if albums %}
-      <p class="muted">Tick the albums this frame shows. Leave all unticked to show every album.</p>
-      <div class="checks">
-      {% for a in albums %}
-        <label><input type="checkbox" name="album" value="{{ a.id }}" {{ "checked" if a.id in frame.album_ids }}> {{ a.name }}</label>
-        <input type="hidden" name="album_name_{{ a.id }}" value="{{ a.name }}">
-      {% endfor %}
-      </div>
-    {% elif not albums_error %}
-      <p class="muted">The source has no albums yet. This frame will show every album.</p>
     {% endif %}
 
     <h2 style="margin-top:24px">Videos</h2>
@@ -89,11 +141,13 @@
     {% endif %}
 
     <p style="margin-top:18px"><button type="submit">{{ "Add frame" if is_new else "Save" }}</button>
-      <a class="button secondary" href="{{ url_for('index') }}#frames">Cancel</a></p>
+      <a class="button secondary" href="{{ url_for('index') + '#frames' if is_new else url_for('frame_edit', frame_id=frame.id) }}">Cancel</a></p>
   </form>
+</section>
 
   {% if not is_new and frame.kind == "cozyla_adb" %}
-  <h2 style="margin-top:28px">Kiosk</h2>
+<section id="kiosk">
+  <h2>Kiosk</h2>
   {% if kiosk_job %}
     <div id="kiosk-job" data-status="{{ url_for('frame_kiosk_status', frame_id=frame.id) }}">
       <p><b>{{ "Setting up the kiosk" if kiosk_job.action == "setup" else "Restoring the Cozyla app" }}…</b>
@@ -153,13 +207,17 @@
       <button>Set up as a reframe kiosk</button>
     </form>
   {% endif %}
+</section>
   {% endif %}
 
   {% if frame.is_kiosk %}
-  <h2 style="margin-top:28px">Health</h2>
-  {{ health_details(health) }}
+<section id="health">
+  <h2>Health</h2>
+  {{ health_details(view.health) }}
+</section>
   {% if screenshot %}
-  <h2 id="screenshot" style="margin-top:28px">Screenshot</h2>
+<section id="screenshot">
+  <h2>Screenshot</h2>
   <form method="post" action="{{ url_for('frame_screenshot', frame_id=frame.id) }}">
     <button class="secondary">Take a screenshot</button>
     <span class="muted">{{ "Requested, waiting for the frame." if screenshot.requested else "Arrives within a minute (agent 0.3.0 or later; black while the screen is off)." }}</span>
@@ -169,12 +227,15 @@
   {% set src = url_for('frame_screenshot_png', frame_id=frame.id, t=screenshot.at|int) %}
   <a href="{{ src }}"><img src="{{ src }}" alt="The frame's screen" style="max-width:240px;border:1px solid #ccc"></a>
   {% endif %}
-  <h2 id="reboot" style="margin-top:28px">Reboot</h2>
+</section>
+<section id="reboot">
+  <h2>Reboot</h2>
   <form method="post" action="{{ url_for('frame_reboot', frame_id=frame.id) }}"
         onsubmit='return confirm({{ ("Reboot " ~ frame.name ~ "?") | tojson }})'>
     <button class="secondary">Reboot</button>
     <span class="muted">{{ "Reboot requested, waiting for the frame." if reboot_requested else "The frame restarts within a minute and is back in about 30 s; adb is open for 2 minutes after it boots, for setup or restore." }}</span>
   </form>
+</section>
   {% endif %}
   {% endif %}
 
@@ -185,5 +246,4 @@
     <button class="danger">Remove frame</button>
   </form>
   {% endif %}
-</section>
 {% endblock %}

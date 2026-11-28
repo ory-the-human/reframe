@@ -47,36 +47,39 @@ The CLI commands below run there as `sudo reframe …` instead of
 
 Open `http://<nas-ip>:1992`. Log in with any username and your `WEB_PASSWORD`.
 
-1. **Settings → Albums**: paste each album's share link, with a name if you want
-   another than the album's title (or `reframe albums add LINK --name …`). Or
-   create a **local album** by name: it lives on the server in
-   `data/albums/<album id>/`, whatever the source. On its page, upload photos and
-   videos (also from a phone's browser) and delete them; files copied into its
-   folder by hand show up too. A file deleted from a local album leaves the frames
-   at the next sync, and removing the album deletes its files. Rename an album by
-   editing its name in the list.
-2. **Frames → Add a frame** for each screen: its type, the albums it shows (none
-   ticked means all) and, for slideshows, its display settings. **Check**
+1. **Albums** on the dashboard: paste each album's share link (or
+   `reframe albums add LINK --name …`). Or create a **local album** by name: it
+   lives on the server in `data/albums/<album id>/`, whatever the source. On its
+   page, upload photos and videos (also from a phone's browser) and delete them;
+   files copied into its folder by hand show up too. A file deleted from a local
+   album leaves the frames at the next sync, and removing the album deletes its
+   files. Each album's page also renames or removes it and picks the frames that
+   show it.
+2. **Frames → Add a frame** on the dashboard for each screen: its type and, for
+   slideshows, its display settings. A frame shows every album until you add
+   albums to it on its page (or tick it on an album's page); removing its last
+   album makes it show every album again. **Check** on its page
    confirms the worker can reach it. For `cozyla_adb`, a Cozyla connects without
    asking: its adb has no authentication and runs as root, so keep it on an
    isolated network ([docs/cozyla-frame.md](docs/cozyla-frame.md)). Other Android
    frames show an "Allow USB debugging?" prompt the first time; tick "Always
    allow" and check again (the key is kept in `data/.android/`). For `folder`,
-   mount the folder in `docker-compose.yml`. For `web`, the dashboard shows the
-   frame's slideshow link and a QR code.
+   mount the folder in `docker-compose.yml`. For `web`, the frame's page shows its
+   slideshow link and a QR code.
 3. **Sync**: the server syncs every `SYNC_MINUTES` (Settings → "Minutes between
    syncs", default 60, 0 for off), starting 30 seconds after it starts. **Sync now**
-   on the dashboard runs one at once; the dashboard shows what the last run did
-   per frame and how many photos each frame holds. `reframe sync --dry-run` shows
+   on the dashboard runs one at once; the dashboard shows when the last run was,
+   which frames had problems and how many photos each frame holds, and each
+   frame's page shows what the last run did per album. `reframe sync --dry-run` shows
    what a sync would change without changing anything. New photos are copied to
    the frames; a photo that leaves an album is removed after it's missing from two
    complete listings in a row (longer if many leave at once), and an album a frame
    stops showing is removed from it at once. New videos are re-encoded for each
    frame's screen (H.264, sides a multiple of 32, which the Cozyla frame needs);
    turn this off in Settings → Videos or per frame.
-4. **Listing test** (optional): lists every album in full and saves a snapshot to
+4. **Settings → Listing test** (optional): lists every album in full and saves a snapshot to
    `data/`. Set "Download samples" above 0 to fetch a few files sized for the
-   frame. Run it again after adding or removing a photo; the dashboard shows the
+   frame. Run it again after adding or removing a photo; Settings shows the
    changes between the last two snapshots.
 
 ### Google Photos Ambient source (needs partner approval)
@@ -101,7 +104,7 @@ otherwise registering the frame fails with 403 `PERMISSION_DENIED`.
 
 ### Browser slideshow (`web` frames)
 
-Open a slideshow frame's link from the dashboard on any screen with a browser. It plays
+Open a slideshow frame's link from its page on any screen with a browser. It plays
 full screen, fades between photos, picks up new photos and setting changes within
 10 seconds, and plays videos muted.
 

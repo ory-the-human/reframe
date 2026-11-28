@@ -21,6 +21,7 @@
     body { margin: 0; background: var(--bg); color: var(--text);
            font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
     main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+    main.wide { max-width: 1040px; }
     header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 20px; }
     header h1 { font-size: 20px; margin: 0; }
     header nav a { color: var(--muted); margin-left: 16px; text-decoration: none; }
@@ -39,9 +40,16 @@
     a { color: var(--accent); }
     .actions { display: flex; gap: 8px; margin: 8px 0; }
     .qr.small svg { width: 120px; height: 120px; }
-    .frame { border-top: 1px solid var(--border); padding: 12px 0 4px; }
-    .frame:first-of-type { border-top: 0; padding-top: 0; }
     .checks label { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 4px 16px 4px 0; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin: 4px 0 8px; }
+    .card { display: block; color: inherit; text-decoration: none; background: var(--bg);
+            border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+    .card:hover { border-color: var(--accent); }
+    .card p { margin: 2px 0; }
+    h2 .end { margin-left: auto; font-size: 14px; font-weight: 500; }
+    form.add { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; }
+    form.add label { margin: 0; white-space: nowrap; }
+    form.add input, form.add select { flex: 1; }
     .row { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
     form.inline { display: inline; }
     button, .button { font: inherit; background: var(--accent); color: var(--accent-text); border: 0;
@@ -60,6 +68,7 @@
     .check label { display: inline; font-weight: 400; margin: 0 16px 0 4px; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     td, th { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .mid td { vertical-align: middle; }
     .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; border: 1px solid currentColor; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
     .grid img, .grid video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 4px; }
@@ -67,7 +76,7 @@
   </style>
 </head>
 <body>
-<main>
+<main class="{% block width %}{% endblock %}">
   <header>
     <h1>reframe</h1>
     <nav><a href="{{ url_for('index') }}">Dashboard</a><a href="{{ url_for('settings') }}">Settings</a></nav>

@@ -1,41 +1,20 @@
 {% extends "base.html" %}
-{% from "_health.html" import health_line %}
+{% block width %}wide{% endblock %}
 {% block content %}
 
-<section>
-  <h2>Setup</h2>
-  <p>Source: <b>{{ cfg.source }}</b> · Frames: <b>{{ frames|length }}</b>
-    <a class="muted" href="{{ url_for('settings') }}" style="margin-left:8px">change</a></p>
-</section>
-
 <section id="sync">
-  <h2>Sync <span class="muted" style="font-weight:400">{{ "every %s min"|format(cfg.sync_interval // 60) if cfg.sync_interval else "automatic sync off" }}</span>
-    {% if sync_running %}<span class="badge warn">running</span>{% endif %}</h2>
-  {% if sync_run %}
-    <p class="muted">Last run {{ clock(sync_run.finished) }} ({{ duration(now - sync_run.finished) }} ago)</p>
-    {% if sync_run.error %}<p class="error">Sync failed: {{ sync_run.error }}</p>{% endif %}
-    {% if sync_run.frames %}
-    <table>
-      {% for f in sync_run.frames %}
-        {% if f.error %}<tr><td>{{ f.frame }}</td><td class="error">{{ f.error }}</td></tr>{% endif %}
-        {% for a in f.albums %}
-        <tr><td>{{ f.frame }} / {{ a.album }}</td>
-          <td><span class="ok">+{{ a.added }}</span> <span class="error">−{{ a.removed }}</span>, {{ a.kept }} kept
-            {%- if a.waiting %}, <span class="warn">{{ a.waiting }} missing, kept for now</span>{% endif %}
-            {%- if a.failed %}, <span class="error">{{ a.failed }} failed</span>{% endif %}
-            {%- if a.note %} <span class="muted">({{ a.note }})</span>{% endif %}</td></tr>
-        {% endfor %}
-      {% endfor %}
-    </table>
+  <div class="row" style="justify-content:space-between">
+    <p>{% if sync_run %}Synced {{ clock(sync_run.finished) }} · {{ duration(now - sync_run.finished) }} ago{% else %}No sync yet{% endif %}
+      <span class="muted">· {{ "every %s min"|format(cfg.sync_interval // 60) if cfg.sync_interval else "automatic sync off" }}</span>
+      {% if sync_running %}<span class="badge warn">running</span>{% endif %}
+      {% if sync_run and sync_run.error %}<br><span class="error">Sync failed: {{ sync_run.error }}</span>
+      {% elif sync_failures %}<br><span class="warn">Problems on {{ sync_failures | join(", ") }}; see their pages.</span>{% endif %}</p>
+    {% if sync_running %}
+      <script>setTimeout(() => location.reload(), 5000);</script>
+    {% else %}
+      <form method="post" action="{{ url_for('sync_now') }}"><button>Sync now</button></form>
     {% endif %}
-  {% else %}
-    <p class="muted">No sync yet.</p>
-  {% endif %}
-  {% if sync_running %}
-    <script>setTimeout(() => location.reload(), 5000);</script>
-  {% else %}
-    <form method="post" action="{{ url_for('sync_now') }}" style="margin-top:8px"><button>Sync now</button></form>
-  {% endif %}
+  </div>
 </section>
 
 {% if cfg.source == "google_ambient" %}
@@ -129,97 +108,57 @@
 {% endif %}
 {% endif %}
 
-{# Listing test #}
-{% if cfg.source != "google_ambient" or (account and account.signed_in and account.device) %}
-<section id="test">
-  <h2>Listing test</h2>
-  <p class="muted">Lists every selected album in full and saves a snapshot.
-    To test change detection: run it, add or remove a photo in an album, then run it again.</p>
-  <form method="post" action="{{ url_for('test_list') }}" class="check">
-    <p>Download samples per album <input type="number" name="download" value="0" min="0" max="10"></p>
-    <p><button>Run listing</button></p>
-  </form>
-
-  {% if listing %}
-    <h2 style="margin-top:18px">Last run <span class="muted" style="font-weight:400">{{ listing.taken_at }}</span></h2>
-    <table>
-      <tr><th>Album</th><th>Items</th><th>Types</th></tr>
-      {% for s in listing.albums %}
-      <tr>
-        <td>{{ s.name }}</td>
-        <td>{{ s.count }}{% if not s.complete %} <span class="warn">(incomplete)</span>{% endif %}</td>
-        <td>{% for m, n in s.mimes %}{{ m }} × {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
-      </tr>
-      {% for r in s.samples %}
-      <tr><td></td><td colspan="2" class="muted">
-        {% if r.file %}sample {{ r.file }} · {{ r.kb }} KB
-        {% else %}<span class="error">sample download failed: {{ r.error }}</span>{% endif %}
-      </td></tr>
-      {% endfor %}
-      {% endfor %}
-    </table>
-  {% endif %}
-
-  {% if latest_diff %}
-    {% set old_path, new_path, changes = latest_diff %}
-    <h2 style="margin-top:18px">Changes between the last two snapshots</h2>
-    <p class="muted"><code>{{ old_path.name }}</code> → <code>{{ new_path.name }}</code></p>
-    {% for c in changes %}
-      {% if c.only_in %}
-        <p><b>{{ c.album }}</b>: only in the {{ c.only_in }} snapshot</p>
-      {% else %}
-        <p><b>{{ c.album }}</b>: {{ c.old_count }} → {{ c.new_count }} items,
-          <span class="ok">+{{ c.added|length }}</span> <span class="error">−{{ c.removed|length }}</span>
-          {% if not c.reliable %}<span class="warn">(a listing was incomplete, so removals are unreliable)</span>{% endif %}</p>
-        {% if c.added %}<ul class="ids">{% for i in c.added %}<li class="ok"><code>{{ i }}</code></li>{% endfor %}</ul>{% endif %}
-        {% if c.removed %}<ul class="ids">{% for i in c.removed %}<li class="error"><code>{{ i }}</code></li>{% endfor %}</ul>{% endif %}
-      {% endif %}
-    {% endfor %}
-  {% endif %}
-</section>
-{% endif %}
-
-{# Frames #}
 <section id="frames">
-  <h2>Frames <span class="muted" style="font-weight:400">{{ frames|length }}</span></h2>
-  {% if not frames %}
-    <p>No frames yet. Add each screen that should show photos.</p>
-  {% endif %}
+  <h2>Frames <span class="muted" style="font-weight:400">{{ frames|length }}</span>
+    <a class="button end" href="{{ url_for('frame_new') }}">Add a frame</a></h2>
+  {% if not frames %}<p class="muted">No frames yet. Add each screen that should show photos.</p>{% endif %}
+  <div class="cards">
   {% for v in frames %}
-    {% set f = v.frame %}
-    <div class="frame">
-      <p><b>{{ f.name }}</b> <span class="muted">· {{ v.kind_label }}{% if f.kind != "web" %} · <code>{{ f.target }}</code>{% endif %}</span></p>
-      <p class="muted">Albums: {{ f.albums | map(attribute="name") | join(", ") if f.albums else "all" }} · {{ counts.get(f.id, 0) }} photos
-        {% if f.shows_slideshow %} · {{ v.display.interval }}s per photo, {{ v.display.layout }}, {{ v.display.orientation }}{% if f.display %} (own settings){% endif %}{% endif %}</p>
-      {% if f.kind == "web" %}
-        <div class="row" style="margin:8px 0">
-          <a class="code" href="{{ v.slideshow_url }}" target="_blank" rel="noopener">{{ v.slideshow_url }}</a>
-          <div class="qr small">{{ qr_svg(v.slideshow_url) }}</div>
-        </div>
-      {% elif f.is_kiosk %}
-        <p class="muted">Kiosk: plays the reframe slideshow (settings password on the frame's page)</p>
-        <p>{{ health_line(v.health) }}</p>
-      {% elif f.kind == "cozyla_adb" %}
-        <p class="muted">The first connection shows an "Allow USB debugging?" prompt on the frame. Tick "Always allow", then check again.</p>
+    {% set f, h = v.frame, v.health %}
+    <a class="card" href="{{ url_for('frame_edit', frame_id=f.id) }}">
+      <p><b>{{ f.name }}</b>{% if f.name in sync_failures %} <span class="badge warn">sync issues</span>{% endif %}</p>
+      <p class="muted">{{ v.kind_label.split(" (")[0] }}{% if f.is_kiosk %} · kiosk{% endif %}</p>
+      <p>{{ counts.get(f.id, 0) }} photos · {{ "%d album%s"|format(f.albums|length, "" if f.albums|length == 1 else "s") if f.albums else "All albums" }}</p>
+      {% if f.agent_key %}
+      <p>{% if h %}<span class="{{ 'ok' if h.online else 'warn' }}">{{ "online" if h.online else "last heard " ~ duration(h.age) ~ " ago" }}</span>
+        {%- if h.screen %}<span class="muted"> · screen {{ "on" if h.screen.on else "off" }}</span>{% endif %}
+        {% else %}<span class="muted">agent: no report yet</span>{% endif %}</p>
       {% endif %}
-      <div class="actions">
-        <a class="button secondary" href="{{ url_for('frame_edit', frame_id=f.id) }}">Edit</a>
-        <form class="inline" method="post" action="{{ url_for('frame_check', frame_id=f.id) }}"><button class="secondary">Check</button></form>
-      </div>
-      {% if v.check %}
-        {% if v.check.ok %}
-          <table style="margin-top:6px">{% for k, val in v.check.info.items() %}<tr><th>{{ k }}</th><td>{{ val }}</td></tr>{% endfor %}</table>
-        {% else %}
-          <p class="error">{{ v.check.error }}</p>
-        {% endif %}
-      {% endif %}
-    </div>
+    </a>
   {% endfor %}
-  <p style="margin-top:12px"><a class="button" href="{{ url_for('frame_new') }}">Add a frame</a></p>
-  {% if frames | selectattr("frame.kind", "equalto", "web") | list %}
-  <p class="muted">A slideshow link is the password for that screen, so share it only with the screen.
-    One screen can override its frame's display settings by adding e.g.
-    <code>?interval=10&amp;layout=pair&amp;orientation=portrait&amp;shuffle=no&amp;fill=black</code> to its link.</p>
+  </div>
+</section>
+
+<section id="albums">
+  <h2>Albums <span class="muted" style="font-weight:400">{{ albums|length }}</span></h2>
+  {% if albums_error %}<p class="warn">Couldn't load albums from the source: {{ albums_error }}</p>{% endif %}
+  {% if not albums %}<p class="muted">No albums yet.</p>{% endif %}
+  <div class="cards">
+  {% for a in albums %}
+    <a class="card" href="{{ url_for('album_page', album_id=a.id) }}">
+      <p><b>{{ a.name }}</b></p>
+      <p class="muted">{{ a.kind_label }}{% if a.count is not none %} · {{ a.count }} photos{% endif %}</p>
+      <p>{% if not a.frames %}<span class="muted">No frame shows it</span>
+        {% elif a.frames|length == frames|length and frames|length > 1 %}On all {{ frames|length }} frames
+        {% else %}On {{ a.frames | map(attribute="name") | join(", ") }}{% endif %}</p>
+    </a>
+  {% endfor %}
+  </div>
+  <form class="add" method="post" action="{{ url_for('album_new') }}">
+    <label for="local_name">New local album</label>
+    <input type="text" id="local_name" name="name" required placeholder="Holidays">
+    <button>Create</button>
+  </form>
+  {% if cfg.source == "share_link" %}
+  <form class="add" method="post" action="{{ url_for('album_add') }}">
+    <label for="url">Add a shared album</label>
+    <input type="url" id="url" name="url" required placeholder="https://photos.app.goo.gl/…">
+    <button>Add</button>
+  </form>
+  <p class="muted">Local albums live on this server; upload photos on their page. For a shared album, open it in
+    Google Photos, then Share → Create link. Anyone with the link can see the album.</p>
+  {% elif cfg.source == "google_ambient" %}
+  <p class="muted">Local albums live on this server; upload photos on their page. Google Photos albums are picked in Google Photos.</p>
   {% endif %}
 </section>
 {% endblock %}
