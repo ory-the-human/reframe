@@ -109,7 +109,7 @@ def wanted(cfg: Config, frame: registry.FrameConfig, what: str) -> bool:
 
 
 def save_display(cfg: Config, frame: registry.FrameConfig, changes: dict[str, Any]) -> None:
-    """Settings changed on the frame itself; display_values clamps them."""
+    """Settings changed on the frame itself; the setting's typed value clamps them."""
     for key in ("interval", "volume"):
         if key in changes:
             frame.display[f"display_{key}"] = str(changes[key])

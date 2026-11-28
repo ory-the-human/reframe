@@ -163,41 +163,10 @@ def cmd_frames(cfg: config.Config, args: argparse.Namespace) -> None:
         print(f"{f.id}  {f.name:<20} {kind:<19} {f.target:<28} {albums}")
 
 
-DISPLAY_FLAGS = {  # CLI flag -> display setting
-    "interval": "display_interval",
-    "layout": "display_layout",
-    "orientation": "display_orientation",
-    "shuffle": "display_shuffle",
-    "fill": "display_fill",
-    "date": "display_date",
-}
-
-
-SCREEN_FLAGS = {  # CLI flag -> screen setting
-    "schedule": "screen_schedule",
-    "dark": "screen_dark",
-    "dark_lux": "screen_dark_lux",
-    "dark_seconds": "screen_dark_seconds",
-}
-
-
-def _check_screen(key: str, value: str) -> None:
-    error = config.check_screen(key, value)
+def _check_setting(key: str, value: str) -> None:
+    error = config.FRAME_SETTING[key].check(value)
     if error:
         sys.exit(error)
-
-
-def _check_display(key: str, value: str) -> None:
-    """Reject display values the slideshow wouldn't understand ("" means the default)."""
-    if not value:
-        return
-    if key == "display_interval":
-        if not value.isdigit() or not 3 <= int(value) <= 3600:
-            sys.exit("interval: give seconds per photo, 3 to 3600.")
-    else:
-        choices = {**config.DISPLAY_CHOICES, "convert_videos": config.VIDEO_CHOICES}[key]
-        if value not in choices:
-            sys.exit(f"{key.removeprefix('display_')}: choose one of {', '.join(choices)}.")
 
 
 def _edit_frame(cfg: config.Config, f: registry.FrameConfig, args: argparse.Namespace) -> None:
@@ -211,18 +180,16 @@ def _edit_frame(cfg: config.Config, f: registry.FrameConfig, args: argparse.Name
     elif args.album:
         known = {a["id"]: a["name"] for a in f.albums}
         f.albums = [{"id": a, "name": known.get(a, a)} for a in args.album]
-    screen = {flag: key for flag, key in SCREEN_FLAGS.items() if getattr(args, flag) is not None}
-    if screen and not f.is_kiosk:
-        sys.exit("Screen settings are for kiosk frames; set one up with `reframe kiosk setup`.")
-    for flag, key in {**DISPLAY_FLAGS, **screen, "convert_videos": "convert_videos"}.items():
-        value = getattr(args, flag)
-        if value is None:
-            continue
-        (_check_screen if key in config.SCREEN_KEYS else _check_display)(key, value)
+    changed = [s for s in config.FRAME_SETTINGS if getattr(args, s.name) is not None]
+    if any(s.applies == "kiosk" for s in changed) and not f.is_kiosk:
+        sys.exit("Screen and sound settings are for kiosk frames; set one up with `reframe kiosk setup`.")
+    for s in changed:
+        value = getattr(args, s.name)
+        _check_setting(s.key, value)
         if value:
-            f.display[key] = value
+            f.display[s.key] = value
         else:
-            f.display.pop(key, None)
+            f.display.pop(s.key, None)
     registry.update(cfg, f)
     print(f"Saved {f.name}.")
     _show_frame(cfg, f)
@@ -243,15 +210,14 @@ def _show_frame(cfg: config.Config, f: registry.FrameConfig) -> None:
     print(f"{'videos':>12}: {'converted' if frames.converts_videos(cfg, f) else 'as downloaded'}{' (this frame)' if f.display.get('convert_videos') else ''}")
     if f.shows_slideshow:
         effective = frames.display_for(cfg, f)
-        for flag, key in DISPLAY_FLAGS.items():
-            own = " (this frame)" if f.display.get(key) else ""
-            value = effective[flag]
+        for flag, value in effective.items():
+            own = " (this frame)" if f.display.get(f"display_{flag}") else ""
             print(f"{flag:>12}: {('yes' if value else 'no') if isinstance(value, bool) else value}{own}")
         print(f"{'slideshow':>12}: {_slideshow_link(cfg, f)}")
     if f.is_kiosk:
         screen = frames.screen_for(cfg, f)
         schedule = screen["schedule"]
-        own = {flag: " (this frame)" if f.display.get(key) else "" for flag, key in SCREEN_FLAGS.items()}
+        own = {flag: " (this frame)" if f.display.get(f"screen_{flag}") else "" for flag in screen}
         print(f"{'schedule':>12}: {'off ' + schedule['off'] + ' to ' + schedule['on'] if schedule else 'always on'}{own['schedule']}")
         dark = f"off below {screen['dark_lux']} lux for {screen['dark_seconds']} s" if screen["dark"] else "ignored"
         print(f"{'room light':>12}: {dark}{own['dark'] or own['dark_lux'] or own['dark_seconds']}")
@@ -425,17 +391,15 @@ def cmd_settings(cfg: config.Config, args: argparse.Namespace) -> None:
         if key not in config.SETTINGS:
             sys.exit(f"Unknown setting {key!r}; settings: {', '.join(config.SETTINGS)}.")
         value = args.value if args.action == "set" else ""
-        if key in config.DISPLAY_KEYS or key == "convert_videos":
-            _check_display(key, value)
-        elif key in config.SCREEN_KEYS:
-            _check_screen(key, value)
+        if key in config.FRAME_SETTING:
+            _check_setting(key, value)
         elif key == "source" and value and value not in sources.KINDS:
             sys.exit(f"source: choose one of {', '.join(sources.KINDS)}.")
         config.save_settings({key: value})
         print(f"{'Set' if value else 'Cleared'} {key}.")
         return
     for key, (env, default) in config.SETTINGS.items():
-        value = getattr(cfg, key)
+        value = cfg.get(key)
         origin = "saved" if saved.get(key) else ("env " + env if os.environ.get(env) else "default")
         if key in SECRET_SETTINGS and value:
             value = "(set)"
@@ -506,15 +470,9 @@ def main() -> None:
     albums = fp.add_mutually_exclusive_group()
     albums.add_argument("--album", action="append", metavar="ID", help="album id to show (repeat); replaces the list")
     albums.add_argument("--all-albums", action="store_true", help="show every album")
-    fp.add_argument("--interval", metavar="SECONDS", help="seconds per photo")
-    for flag, key in DISPLAY_FLAGS.items():
-        if flag != "interval":
-            fp.add_argument(f"--{flag}", metavar="|".join(config.DISPLAY_CHOICES[key]))
-    fp.add_argument("--convert-videos", metavar="yes|no", help="re-encode new videos for the frame's screen")
-    fp.add_argument("--schedule", metavar="always|HH:MM-HH:MM", help="kiosk: hours the screen is off, e.g. 23:00-07:00")
-    fp.add_argument("--dark", metavar="yes|no", help="kiosk: turn the screen off when the room is dark")
-    fp.add_argument("--dark-lux", metavar="LUX", help="kiosk: below this the room counts as dark")
-    fp.add_argument("--dark-seconds", metavar="SECONDS", help="kiosk: how long it must be dark first")
+    for s in config.FRAME_SETTINGS:
+        metavar = "HH:MM-HH:MM|always" if s.kind == "schedule" else ("|".join(s.choices) or "%d-%d" % s.range)
+        fp.add_argument(f"--{s.name.replace('_', '-')}", metavar=metavar, help=s.label.lower() + (" (kiosk)" if s.applies == "kiosk" else ""))
     p.set_defaults(func=cmd_frames)
 
     p = sub.add_parser("settings", help="list settings, or set or clear one (same as the web UI's Settings)")

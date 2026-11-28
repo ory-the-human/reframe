@@ -1,164 +1,47 @@
 {% extends "base.html" %}
-{% block width %}wide{% endblock %}
+{% from "_ui.html" import group, row, thumb, buttons, button, dialog, text_row, select_row %}
+{% block heading %}General{% endblock %}
 {% block content %}
+{% if cfg.source == "google_ambient" and not (account and account.signed_in) %}
+{% call group() %}{{ row("Google Photos isn't connected", "Sign in on the Settings page to sync its albums", href=url_for('settings'), value="Not connected", tone="warn") }}{% endcall %}
+{% endif %}
 
-<section id="sync">
-  <div class="row" style="justify-content:space-between">
-    <p>{% if sync_run %}Synced {{ clock(sync_run.finished) }} · {{ duration(now - sync_run.finished) }} ago{% else %}No sync yet{% endif %}
-      <span class="muted">· {{ "every %s min"|format(cfg.sync_interval // 60) if cfg.sync_interval else "automatic sync off" }}</span>
-      {% if sync_running %}<span class="badge warn">running</span>{% endif %}
-      {% if sync_run and sync_run.error %}<br><span class="error">Sync failed: {{ sync_run.error }}</span>
-      {% elif sync_failures %}<br><span class="warn">Problems on {{ sync_failures | join(", ") }}; see their pages.</span>{% endif %}</p>
-    {% if sync_running %}
-      <script>setTimeout(() => location.reload(), 5000);</script>
-    {% else %}
-      <form method="post" action="{{ url_for('sync_now') }}"><button>Sync now</button></form>
-    {% endif %}
-  </div>
-</section>
-
-{% if cfg.source == "google_ambient" %}
-{# Google Photos Ambient: OAuth client and sign-in #}
-{% if not cfg.has_client %}
-<section>
-  <h2>1. Google OAuth client <span class="badge warn">needed</span></h2>
-  <p>Add the client ID and secret from your Google Cloud project to get started.</p>
-  <p><a class="button" href="{{ url_for('settings') }}">Open settings</a></p>
-</section>
-{% else %}
-
-{# 2. Google account / sign-in flow #}
-<section id="account">
-  {% if login and login.active %}
-    <h2>Connecting Google Photos <span class="badge warn">in progress</span></h2>
-    {% if login.step == "starting" %}
-      <p>Requesting a sign-in code…</p>
-    {% elif login.step == "awaiting_signin" %}
-      <p>On your phone or computer, open <a href="{{ login.verification_url }}" target="_blank" rel="noopener">{{ login.verification_url }}</a>
-         and enter this code:</p>
-      <div class="row">
-        <span class="code usercode">{{ login.user_code }}</span>
-        <div class="qr">{{ qr_svg(login.verification_url) }}</div>
-      </div>
-      <p class="muted">Google will also ask you to pick the albums for the frame. This page updates by itself.</p>
-    {% elif login.step == "registering" %}
-      <p>Signed in. Registering the frame with Google Photos…</p>
-    {% elif login.step == "awaiting_albums" %}
-      <p>Almost there: pick the albums to show on the frame in Google Photos.</p>
-      <div class="row">
-        <a class="button" href="{{ login.settings_uri }}" target="_blank" rel="noopener">Choose albums</a>
-        <div class="qr">{{ qr_svg(login.settings_uri) }}</div>
-      </div>
-    {% endif %}
-    <script>
-      // Reload when the sign-in flow advances.
-      const step = {{ login.step | tojson }};
-      setInterval(async () => {
-        const r = await fetch("{{ url_for('login_status') }}");
-        if ((await r.json()).step !== step) location.reload();
-      }, 3000);
-    </script>
+{% call group("Frames") %}
+  {% for v in nav.frames %}
+  {{ row(v.frame.name, v.subtitle, href=url_for('frame_edit', frame_id=v.frame.id), thumb=thumb("frame", v.frame.id, v.thumb), value=v.status[1], tone=v.status[0]) }}
   {% else %}
-    {% if login and login.step == "error" %}
-      <div class="flash error">Sign-in failed: {{ login.error }}
-        <form class="inline" method="post" action="{{ url_for('login_dismiss') }}"><button class="secondary">Dismiss</button></form>
-      </div>
-    {% endif %}
-    {% if account.signed_in %}
-      <h2>2. Google Photos <span class="badge ok">connected</span></h2>
-      {% if account.token_age_days is defined %}
-        <p class="muted">Signed in {{ "%.1f"|format(account.token_age_days) }} days ago.
-          {% if account.token_age_days > 6 %}<span class="warn">If the OAuth app is still in Testing mode, the sign-in expires at 7 days.</span>{% endif %}
-        </p>
-      {% endif %}
-      {% if account.device_error %}
-        <p class="error">Couldn't load the frame's Google Photos device: {{ account.device_error }}</p>
-      {% elif account.device %}
-        {% set d = account.device %}
-        <p>Device <b>{{ d.displayName }}</b></p>
-        {% if d.mediaSources %}
-          <table>
-            <tr><th>Album</th><th>Source id</th></tr>
-            {% for s in d.mediaSources %}<tr><td>{{ s.displayName }}</td><td><code>{{ s.id }}</code></td></tr>{% endfor %}
-          </table>
-        {% else %}
-          <p class="warn">No albums picked yet.</p>
-        {% endif %}
-        <p style="margin-top:12px">
-          <a class="button" href="{{ d.settingsUri }}" target="_blank" rel="noopener">Change albums</a>
-        </p>
-      {% endif %}
-      <p style="margin-top:12px">
-        <form class="inline" method="post" action="{{ url_for('login_start') }}"><button class="secondary">Sign in again</button></form>
-        <form class="inline" method="post" action="{{ url_for('signout') }}"><button class="secondary">Sign out</button></form>
-        <form class="inline" method="post" action="{{ url_for('signout') }}"
-              onsubmit="return confirm('Remove this frame from Google Photos? You will need to pick albums again.')">
-          <input type="hidden" name="forget_device" value="1"><button class="danger">Sign out and remove device</button>
-        </form>
-      </p>
-    {% else %}
-      <h2>2. Google Photos <span class="badge warn">not connected</span></h2>
-      <p>Sign in with the Google account that owns the albums. It must be a test user on the OAuth consent screen.</p>
-      <p class="muted">The Ambient API only works for projects accepted into the Google Photos partner program;
-        others get "permission denied" when the frame is registered.</p>
-      <form method="post" action="{{ url_for('login_start') }}"><button>Connect Google Photos</button></form>
-    {% endif %}
-  {% endif %}
-</section>
-{% endif %}
-{% endif %}
-
-<section id="frames">
-  <h2>Frames <span class="muted" style="font-weight:400">{{ frames|length }}</span>
-    <a class="button end" href="{{ url_for('frame_new') }}">Add a frame</a></h2>
-  {% if not frames %}<p class="muted">No frames yet. Add each screen that should show photos.</p>{% endif %}
-  <div class="cards">
-  {% for v in frames %}
-    {% set f, h = v.frame, v.health %}
-    <a class="card" href="{{ url_for('frame_edit', frame_id=f.id) }}">
-      <p><b>{{ f.name }}</b>{% if f.name in sync_failures %} <span class="badge warn">sync issues</span>{% endif %}</p>
-      <p class="muted">{{ v.kind_label.split(" (")[0] }}{% if f.is_kiosk %} · kiosk{% endif %}</p>
-      <p>{{ counts.get(f.id, 0) }} photos · {{ "%d album%s"|format(f.albums|length, "" if f.albums|length == 1 else "s") if f.albums else "All albums" }}</p>
-      {% if f.agent_key %}
-      <p>{% if h %}<span class="{{ 'ok' if h.online else 'warn' }}">{{ "online" if h.online else "last heard " ~ duration(h.age) ~ " ago" }}</span>
-        {%- if h.screen %}<span class="muted"> · screen {{ "on" if h.screen.on else "off" }}</span>{% endif %}
-        {% else %}<span class="muted">agent: no report yet</span>{% endif %}</p>
-      {% endif %}
-    </a>
+  {{ row("No frames yet", "Add each screen that should show photos") }}
   {% endfor %}
-  </div>
-</section>
+{% endcall %}
+{% call buttons() %}{{ button("Add frame…", href=url_for('frame_new')) }}{% endcall %}
 
-<section id="albums">
-  <h2>Albums <span class="muted" style="font-weight:400">{{ albums|length }}</span></h2>
-  {% if albums_error %}<p class="warn">Couldn't load albums from the source: {{ albums_error }}</p>{% endif %}
-  {% if not albums %}<p class="muted">No albums yet.</p>{% endif %}
-  <div class="cards">
-  {% for a in albums %}
-    <a class="card" href="{{ url_for('album_page', album_id=a.id) }}">
-      <p><b>{{ a.name }}</b></p>
-      <p class="muted">{{ a.kind_label }}{% if a.count is not none %} · {{ a.count }} photos{% endif %}</p>
-      <p>{% if not a.frames %}<span class="muted">No frame shows it</span>
-        {% elif a.frames|length == frames|length and frames|length > 1 %}On all {{ frames|length }} frames
-        {% else %}On {{ a.frames | map(attribute="name") | join(", ") }}{% endif %}</p>
-    </a>
+{% call group("Albums", footer=nav.albums_error and "Couldn't load albums from the source: " ~ nav.albums_error) %}
+  {% for a in nav.albums %}
+  {{ row(a.name, a.kind_label, href=url_for('album_page', album_id=a.id), thumb=thumb("album", a.id, a.thumb), value=a.count is not none and "%d photos"|format(a.count) or none) }}
+  {% else %}
+  {{ row("No albums yet", "Add a shared Google Photos album, or make one here and upload photos to it") }}
   {% endfor %}
-  </div>
-  <form class="add" method="post" action="{{ url_for('album_new') }}">
-    <label for="local_name">New local album</label>
-    <input type="text" id="local_name" name="name" required placeholder="Holidays">
-    <button>Create</button>
-  </form>
-  {% if cfg.source == "share_link" %}
-  <form class="add" method="post" action="{{ url_for('album_add') }}">
-    <label for="url">Add a shared album</label>
-    <input type="url" id="url" name="url" required placeholder="https://photos.app.goo.gl/…">
-    <button>Add</button>
-  </form>
-  <p class="muted">Local albums live on this server; upload photos on their page. For a shared album, open it in
-    Google Photos, then Share → Create link. Anyone with the link can see the album.</p>
-  {% elif cfg.source == "google_ambient" %}
-  <p class="muted">Local albums live on this server; upload photos on their page. Google Photos albums are picked in Google Photos.</p>
-  {% endif %}
-</section>
+{% endcall %}
+{% call buttons() %}
+  {% if cfg.source == "share_link" %}{{ button("Add shared album…", dialog="add-album") }}{% endif %}
+  {{ button("New album…", dialog="new-album") }}
+{% endcall %}
+{% call dialog("add-album", "Add a shared album", url_for('album_add'), "Add album") %}
+  <div class="group">{{ text_row("Link", "url", type="url", placeholder="https://photos.app.goo.gl/…") }}{{ text_row("Name", "name", placeholder="Optional") }}</div>
+  <p class="foot">In Google Photos, open the album, then Share and Create link. Anyone with the link can see the album.</p>
+{% endcall %}
+{% call dialog("new-album", "New album", url_for('album_new'), "Create album") %}
+  <div class="group">{{ text_row("Name", "name", placeholder="Holidays") }}</div>
+  <p class="foot">Its photos live on this server; upload them on the album's page.</p>
+{% endcall %}
+
+{% set run = nav.run %}
+{% call group("Sync") %}
+  {% set last = "Syncing now" if sync_running else (duration(now - run.finished) ~ " ago" if run else "Never") %}
+  {% call row("Last sync", run and run.error and "Sync failed: " ~ run.error, value=last, tone="error" if run and run.error else none) %}
+    {% if not sync_running %}{{ button("Sync now", action=url_for('sync_now')) }}{% endif %}
+  {% endcall %}
+  <form method="post" action="{{ url_for('settings') }}" data-auto>{{ select_row("Check for new photos", "sync_minutes", sync_choices, cfg.sync_minutes) }}</form>
+{% endcall %}
+{% if sync_running %}<script>setTimeout(function () { location.reload(); }, 5000);</script>{% endif %}
 {% endblock %}

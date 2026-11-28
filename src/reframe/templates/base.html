@@ -3,88 +3,202 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>reframe</title>
+  <title>{% block heading %}{% endblock %} – reframe</title>
   <style>
     :root {
-      --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a66;
-      --border: #e3e1dc; --accent: #2f6f5e; --accent-text: #ffffff;
-      --ok: #2f6f5e; --warn: #9a6400; --error: #b3261e; --code: #efede8;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #161615; --card: #1f1f1d; --text: #ecebe7; --muted: #9c9a94;
-        --border: #33322f; --accent: #6fbfa6; --accent-text: #10201b;
-        --ok: #6fbfa6; --warn: #e0a84a; --error: #f08a80; --code: #2a2a27;
-      }
+      --win: #1b1d23; --side: #1f222a; --group: #262a33; --line: #333743; --text: #e3e4e8; --muted: #9a9da8;
+      --accent: #9db8e6; --ok: #8fc7a8; --warn: #e6bd7a; --error: #eb9a92; --off: #5c606c;
+      --control: #3a3f4c; --field: #2a2e38;
+      color-scheme: dark;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text);
-           font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-    main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
-    main.wide { max-width: 1040px; }
-    header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 20px; }
-    header h1 { font-size: 20px; margin: 0; }
-    header nav a { color: var(--muted); margin-left: 16px; text-decoration: none; }
-    header nav a:hover { color: var(--text); }
-    section { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-              padding: 18px 20px; margin-bottom: 16px; }
-    h2 { font-size: 16px; margin: 0 0 10px; display: flex; gap: 10px; align-items: center; }
-    p { margin: 6px 0; }
-    .muted { color: var(--muted); }
-    .badge { font-size: 12px; font-weight: 500; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; }
-    .ok { color: var(--ok); } .warn { color: var(--warn); } .error { color: var(--error); }
-    code, .code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 13px;
-                  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
-    .usercode { font-size: 28px; letter-spacing: 3px; font-weight: 600; padding: 4px 12px; }
-    .qr svg { width: 180px; height: 180px; background: #fff; border-radius: 6px; }
+    body { margin: 0; display: flex; min-height: 100vh; background: var(--win); color: var(--text);
+           font: 15px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
     a { color: var(--accent); }
-    .actions { display: flex; gap: 8px; margin: 8px 0; }
-    .qr.small svg { width: 120px; height: 120px; }
-    .checks label { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 4px 16px 4px 0; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin: 4px 0 8px; }
-    .card { display: block; color: inherit; text-decoration: none; background: var(--bg);
-            border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
-    .card:hover { border-color: var(--accent); }
-    .card p { margin: 2px 0; }
-    h2 .end { margin-left: auto; font-size: 14px; font-weight: 500; }
-    form.add { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; }
-    form.add label { margin: 0; white-space: nowrap; }
-    form.add input, form.add select { flex: 1; }
-    .row { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
-    form.inline { display: inline; }
-    button, .button { font: inherit; background: var(--accent); color: var(--accent-text); border: 0;
-                      border-radius: 6px; padding: 7px 14px; cursor: pointer; text-decoration: none; display: inline-block; }
-    button.secondary, .button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
-    button.danger { background: transparent; color: var(--error); border: 1px solid var(--error); }
-    label { display: block; margin: 12px 0 4px; font-weight: 500; }
-    input[type=text], input[type=url], input[type=password], input[type=number], select {
-      width: 100%; font: inherit; padding: 7px 10px; border-radius: 6px;
-      border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-    input[type=number] { width: 80px; }
-    input[type=time] { font: inherit; padding: 6px 8px; border-radius: 6px;
-      border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-    .spark { display: block; color: var(--accent); }
+    code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+
+    aside { width: 250px; flex: none; position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column;
+            background: var(--side); border-right: 1px solid var(--line); padding: 22px 12px; }
+    .app { display: flex; align-items: center; gap: 10px; padding: 0 8px 16px; font-weight: 600; font-size: 17px; color: inherit; text-decoration: none; }
+    .logo { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(150deg, #9db8e6, #5b6fa8); position: relative; }
+    .logo::after { content: ""; position: absolute; inset: 7px 8px; border: 2px solid var(--win); border-radius: 2px; }
+    aside h3 { color: var(--muted); font-size: 12px; font-weight: 600; margin: 14px 10px 4px; }
+    .item { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 7px; font-size: 14px; color: inherit; text-decoration: none; }
+    .item:hover { background: rgba(255, 255, 255, .04); }
+    .item.on { background: rgba(157, 184, 230, .22); }
+    .item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item .dot { width: 7px; height: 7px; }
+    .icon { width: 22px; height: 22px; border-radius: 6px; background: #5c6475; display: grid; place-items: center; flex: none; font-size: 16px; color: #fff; }
+    .icon svg { width: 12px; height: 12px; fill: #fff; }
+    aside .bottom { margin-top: auto; padding-top: 14px; }
+
+    main { flex: 1; min-width: 0; padding: 22px 40px 64px; }
+    main > h1 { font-size: 20px; font-weight: 600; margin: 0 0 22px; }
+    .content { max-width: 660px; }
+    h2.section { font-size: 17px; font-weight: 600; margin: 34px 4px 4px; }
+    .foot { color: var(--muted); font-size: 13px; margin: 8px 4px 0; }
+    .foot.intro { margin: 0 4px 14px; }
+
+    .group-wrap { margin-bottom: 22px; }
+    .group-wrap h2 { font-size: 14px; font-weight: 600; margin: 0 4px 8px; }
+    .group { background: var(--group); border-radius: 12px; overflow: hidden; }
+    .group > * + *, .group .row + .row { border-top: 1px solid var(--line); }
+    .buttons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: -12px 0 22px; }
+    .group-wrap:has(.foot) + .buttons { margin-top: -4px; }
+    .row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; min-height: 46px; color: inherit; text-decoration: none; }
+    a.row:hover { background: rgba(255, 255, 255, .03); }
+    label.row { cursor: pointer; }
+    .row .text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .row .sub { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .value { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; text-align: right; }
+    .value.warn { color: var(--warn); }
+    .value.error { color: var(--error); }
+    .chev { color: var(--muted); font-size: 20px; line-height: 1; margin-left: -4px; }
+    .control { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .unit { color: var(--muted); font-size: 14px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--off); }
+    .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.error { background: var(--error); }
+
+    .header { display: flex; align-items: center; gap: 18px; background: var(--group); border-radius: 12px; padding: 18px; margin-bottom: 22px; }
+    .header h2 { margin: 0; font-size: 20px; }
+    .header p { margin: 3px 0 0; color: var(--muted); }
+    .header .value { margin-top: 6px; text-align: left; }
+    .header .control { margin-left: auto; }
+    .header a { display: block; }
+
+    .thumb { display: block; flex: none; }
+    .thumb > span { display: block; width: 100%; height: 100%; overflow: hidden;
+                    background: linear-gradient(150deg, hsl(var(--hue) 45% 72%), hsl(calc(var(--hue) + 40) 32% 40%)); }
+    .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .album.s { width: 22px; height: 22px; } .album.s > span { border-radius: 5px; }
+    .album.m { width: 44px; height: 44px; } .album.m > span { border-radius: 8px; }
+    .album.l { width: 72px; height: 72px; } .album.l > span { border-radius: 12px; }
+    .frame { background: #0d0e11; }
+    .frame > span { border-radius: 2px; }
+    .frame.s { width: 16px; height: 22px; padding: 2px; border-radius: 3px; }
+    .frame.m { width: 34px; height: 48px; padding: 3px; border-radius: 5px; }
+    .frame.l { width: 62px; height: 88px; padding: 5px; border-radius: 8px; }
+
+    .btn { display: inline-block; font: inherit; font-size: 14px; background: var(--control); color: var(--text); border: 0;
+           border-radius: 7px; padding: 5px 12px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .btn:hover { background: #444a58; }
+    .btn.primary { background: var(--accent); color: var(--win); }
+    .btn.danger { color: var(--error); }
+    form.inline { display: inline; margin: 0; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; }
+    .switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+    .switch i { position: absolute; inset: 0; border-radius: 11px; background: #454a57; pointer-events: none; transition: background .15s; }
+    .switch i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; }
+    .switch input:checked + i { background: var(--accent); }
+    .switch input:checked + i::after { transform: translateX(16px); }
+    .switch input:disabled { cursor: default; }
+    .switch input:disabled + i { opacity: .45; }
+    .switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { .switch i, .switch i::after { transition: none; } }
+
+    .row input, .row select { font: inherit; font-size: 14px; color: var(--text); background: var(--field);
+                              border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+    .row input[type=number] { width: 84px; text-align: right; }
+    .row input[type=text], .row input[type=url], .row input[type=password] { width: 260px; max-width: 100%; }
+    .row select { appearance: none; max-width: 320px; border: 0; background: transparent; color: var(--muted); text-align: right;
+                  padding: 4px 20px 4px 4px; cursor: pointer;
+                  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239a9da8' stroke-width='1.5'/%3E%3C/svg%3E");
+                  background-repeat: no-repeat; background-position: right 4px center; }
+    .row select:hover { color: var(--text); }
+    .row details summary { color: var(--accent); cursor: pointer; font-size: 14px; }
+    progress { width: 160px; accent-color: var(--accent); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; padding: 12px 16px; }
+    .tile { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--field); }
+    .tile img, .tile video { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .tile form { position: absolute; top: 4px; right: 4px; opacity: 0; }
+    .tile:hover form, .tile:focus-within form { opacity: 1; }
+    .tile form button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, .65); color: #fff; cursor: pointer; }
+    .sparks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 16px; padding: 12px 16px; }
+    .sparks p { margin: 0; color: var(--muted); font-size: 13px; }
+    .spark { display: block; width: 100%; color: var(--accent); }
     .spark polyline { fill: none; stroke: currentColor; stroke-width: 1.5; }
-    .check label { display: inline; font-weight: 400; margin: 0 16px 0 4px; }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    td, th { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
-    .mid td { vertical-align: middle; }
-    .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; border: 1px solid currentColor; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-    .grid img, .grid video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 4px; }
-    ul.ids { margin: 4px 0; padding-left: 18px; max-height: 160px; overflow: auto; }
+    .qr svg { display: block; width: 180px; height: 180px; background: #fff; border-radius: 8px; }
+    .usercode { font-size: 26px; letter-spacing: 3px; font-weight: 600; }
+    .file { position: relative; overflow: hidden; }
+    .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+    dialog { width: min(460px, calc(100vw - 32px)); background: var(--group); color: var(--text);
+             border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+    dialog::backdrop { background: rgba(0, 0, 0, .55); }
+    dialog h2 { font-size: 16px; margin: 0 0 14px; }
+    dialog .group { background: var(--win); }
+    dialog .buttons { margin: 16px 0 0; }
+    dialog .row input[type=text], dialog .row input[type=url] { width: 100%; }
+
+    .flashes { position: fixed; right: 24px; bottom: 24px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; z-index: 1; }
+    .flash { background: var(--group); border: 1px solid var(--line); border-left: 3px solid var(--ok); border-radius: 10px;
+             padding: 10px 14px; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+    .flash.error { border-left-color: var(--error); }
+
+    @media (max-width: 700px) {
+      body { display: block; }
+      aside { position: static; width: auto; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 16px 8px; }
+      main { padding: 18px 16px 48px; }
+      .row { flex-wrap: wrap; }
+      .row input[type=text], .row input[type=url], .row input[type=password] { width: 100%; }
+      .flashes { left: 16px; right: 16px; bottom: 16px; }
+    }
   </style>
 </head>
 <body>
-<main class="{% block width %}{% endblock %}">
-  <header>
-    <h1>reframe</h1>
-    <nav><a href="{{ url_for('index') }}">Dashboard</a><a href="{{ url_for('settings') }}">Settings</a></nav>
-  </header>
-  {% for category, message in get_flashed_messages(with_categories=true) %}
-    <div class="flash {{ category }}">{{ message }}</div>
+{% from "_ui.html" import thumb, dot %}
+<aside>
+  <a class="app" href="{{ url_for('index') }}"><span class="logo"></span>reframe</a>
+  <a class="item{{ ' on' if request.path == '/' }}" href="{{ url_for('index') }}"><span class="icon"><svg viewBox="0 0 13 13"><rect width="5.5" height="5.5" rx="1.2"/><rect x="7.5" width="5.5" height="5.5" rx="1.2"/><rect y="7.5" width="5.5" height="5.5" rx="1.2"/><rect x="7.5" y="7.5" width="5.5" height="5.5" rx="1.2"/></svg></span><span class="name">General</span></a>
+  {% if nav.frames %}<h3>Frames</h3>{% endif %}
+  {% for v in nav.frames %}
+  {% set href = url_for('frame_edit', frame_id=v.frame.id) %}
+  <a class="item{{ ' on' if request.path == href }}" href="{{ href }}">{{ thumb("frame", v.frame.id, v.thumb, "s") }}<span class="name">{{ v.frame.name }}</span>{{ dot(v.status[0]) }}</a>
   {% endfor %}
-  {% block content %}{% endblock %}
+  {% if nav.albums %}<h3>Albums</h3>{% endif %}
+  {% for a in nav.albums %}
+  {% set href = url_for('album_page', album_id=a.id) %}
+  <a class="item{{ ' on' if request.path == href }}" href="{{ href }}">{{ thumb("album", a.id, a.thumb, "s") }}<span class="name">{{ a.name }}</span></a>
+  {% endfor %}
+  <div class="bottom">
+    <a class="item{{ ' on' if request.path == url_for('settings') }}" href="{{ url_for('settings') }}"><span class="icon">⚙</span><span class="name">Settings</span></a>
+  </div>
+</aside>
+<main>
+  <h1>{{ self.heading() }}</h1>
+  <div class="content">{% block content %}{% endblock %}</div>
 </main>
+<div class="flashes">
+  {% for category, message in get_flashed_messages(with_categories=true) %}<div class="flash {{ category }}" role="status">{{ message }}</div>{% endfor %}
+</div>
+<script>
+  // Forms marked data-auto apply as soon as a control changes; time fields wait until they lose focus.
+  (function () {
+    function apply(form) {
+      try { sessionStorage.setItem("scroll", location.pathname + " " + scrollY); } catch (e) {}
+      form.requestSubmit();
+    }
+    document.addEventListener("change", function (e) {
+      var form = e.target.form;
+      if (!form || !form.hasAttribute("data-auto")) return;
+      if (e.target.type === "time") e.target.dataset.dirty = "1"; else apply(form);
+    });
+    document.addEventListener("focusout", function (e) {
+      if (e.target.dataset && e.target.dataset.dirty) apply(e.target.form);
+    });
+    document.addEventListener("submit", function (e) {
+      var message = e.target.dataset.confirm;
+      if (message && !confirm(message)) e.preventDefault();
+    });
+    try {
+      var saved = (sessionStorage.getItem("scroll") || "").split(" ");
+      sessionStorage.removeItem("scroll");
+      if (saved[0] === location.pathname) scrollTo(0, +saved[1]);
+    } catch (e) {}
+  })();
+</script>
 </body>
 </html>

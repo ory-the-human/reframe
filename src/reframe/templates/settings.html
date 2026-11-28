@@ -1,137 +1,109 @@
 {% extends "base.html" %}
-{% from "_screen.html" import screen_fields %}
+{% from "_ui.html" import group, row, section, buttons, button, text_row, select_row, number_row, settings_groups %}
+{% block heading %}Settings{% endblock %}
 {% block content %}
-<section id="global">
-  <form method="post">
-    <h2>Source</h2>
-    <label for="source">Photo source</label>
-    <select id="source" name="source">
-      {% for kind, label in source_kinds.items() %}<option value="{{ kind }}" {{ "selected" if kind == cfg.source }}>{{ label }}</option>{% endfor %}
-    </select>
+{% set here = url_for('settings') %}
+{% call group("Server") %}
+  <form method="post" action="{{ here }}" data-auto>{{ select_row("Photo source", "source", source_kinds, cfg.source) }}</form>
+  <form method="post" action="{{ here }}">{{ text_row("Address frames use to reach this server", "public_url", cfg.public_url, "url", "http://192.168.1.10:1992", "Save",
+    "Written into kiosk frames as their slideshow link. Blank uses the address this page was opened with, unless that's localhost.") }}</form>
+{% endcall %}
 
-    <h2 style="margin-top:24px">This server</h2>
-    <label for="public_url">Address frames use to reach this server</label>
-    <input type="url" id="public_url" name="public_url" value="{{ cfg.public_url }}" placeholder="http://192.168.1.10:1992">
-    <p class="muted">Written into kiosk frames as their slideshow link. Leave blank to use the address
-      you opened this page with (unless that's <code>localhost</code>).</p>
-    <label for="sync_minutes">Minutes between syncs, 0 for off</label>
-    <input type="number" id="sync_minutes" name="sync_minutes" value="{{ cfg.sync_minutes }}" min="0">
+{% if cfg.source == "google_ambient" %}
+<form method="post" action="{{ here }}">
+{% call group("Google Photos", footer="Create an OAuth client in the Google Cloud console under Credentials, OAuth client ID, with application type TVs and Limited Input devices, in a project with the Photos Ambient API enabled. The project must be accepted into the Google Photos partner program.") %}
+  {{ text_row("Client ID", "client_id", cfg.client_id) }}
+  {{ text_row("Client secret", "client_secret", type="password", placeholder="Saved; leave blank to keep it" if cfg.client_secret else "") }}
+  {{ text_row("Device name in Google Photos", "device_name", cfg.device_name, subtitle="Used when the device is first registered") }}
+{% endcall %}
+{% call buttons() %}<button class="btn">Save</button>{% endcall %}
+</form>
 
-    <h2 style="margin-top:24px">Display</h2>
-    <p class="muted">Defaults for frames that run the reframe slideshow (browser slideshow and kiosk frames).
-      Each frame can override them on its own page.</p>
-    <label for="display_interval">Seconds per photo</label>
-    <input type="number" id="display_interval" name="display_interval" value="{{ cfg.display.interval }}" min="3" max="3600">
+{% call group("Google account") %}
+  {% if not cfg.has_client %}
+  {{ row("Add the client ID and secret first", value="Not connected", tone="warn") }}
+  {% elif login and login.active %}
+    {% if login.step == "starting" %}{{ row("Requesting a sign-in code…") }}
+    {% elif login.step == "awaiting_signin" %}
+    {% call row("Enter this code at " ~ login.verification_url, "Google also asks which albums the frame shows. This page updates by itself.") %}<span class="usercode">{{ login.user_code }}</span>{% endcall %}
+    {% call row("Or scan this on your phone") %}<a class="qr" href="{{ login.verification_url }}" target="_blank" rel="noopener">{{ qr_svg(login.verification_url) }}</a>{% endcall %}
+    {% elif login.step == "registering" %}{{ row("Signed in. Registering the frame with Google Photos…") }}
+    {% elif login.step == "awaiting_albums" %}
+    {% call row("Pick the albums to show in Google Photos") %}{{ button("Choose albums", href=login.settings_uri) }}<span class="qr">{{ qr_svg(login.settings_uri) }}</span>{% endcall %}
+    {% endif %}
+  {% elif account.signed_in %}
+  {% set old = account.token_age_days is defined and account.token_age_days > 6 %}
+  {{ row("Google account", ("Signed in %.1f days ago"|format(account.token_age_days) ~ (". If the OAuth app is still in testing, the sign-in expires at 7 days." if old else "")) if account.token_age_days is defined else none,
+         value="Connected", tone="warn" if old else "ok") }}
+  {% if account.device_error %}{{ row("Couldn't load the Google Photos device", account.device_error, value="Error", tone="error") }}
+  {% elif account.device %}
+  {% call row("Device", account.device.displayName) %}{{ button("Change albums", href=account.device.settingsUri) }}{% endcall %}
+  {% for s in account.device.mediaSources %}{{ row(s.displayName, "Album on the device") }}{% else %}{{ row("No albums picked yet", value="None", tone="warn") }}{% endfor %}
+  {% endif %}
+  {% else %}
+  {{ row("Google account", "Sign in with the account that owns the albums; it must be a test user on the OAuth consent screen", value="Not connected", tone="warn") }}
+  {% endif %}
+{% endcall %}
+{% if cfg.has_client and not (login and login.active) %}
+{% call buttons() %}
+  {% if account.signed_in %}
+  {{ button("Sign out and remove device…", action=url_for('signout'), style="danger", fields={"forget_device": "1"}, confirm="Remove this frame from Google Photos? You will need to pick albums again.") }}
+  {{ button("Sign out", action=url_for('signout')) }}
+  {{ button("Sign in again", action=url_for('login_start')) }}
+  {% else %}
+  {{ button("Connect Google Photos", action=url_for('login_start'), style="primary") }}
+  {% endif %}
+{% endcall %}
+{% endif %}
+{% if login and login.step == "error" %}
+{% call group() %}{% call row("Sign-in failed", login.error, value="Failed", tone="error") %}{{ button("Dismiss", action=url_for('login_dismiss')) }}{% endcall %}{% endcall %}
+{% endif %}
+{% if login and login.active %}
+<script>
+  // Reload when the sign-in flow advances.
+  (function () {
+    var step = {{ login.step | tojson }};
+    setInterval(function () {
+      fetch("{{ url_for('login_status') }}").then(function (r) { return r.json(); }).then(function (s) { if (s.step !== step) location.reload(); });
+    }, 3000);
+  })();
+</script>
+{% endif %}
+{% endif %}
 
-    {% for key, label in [("display_layout", "Layout"), ("display_orientation", "Orientation"), ("display_shuffle", "Order"), ("display_fill", "Space around photos"), ("display_date", "Date taken")] %}
-    <label for="{{ key }}">{{ label }}</label>
-    <select id="{{ key }}" name="{{ key }}">
-      {% for value, text in display_choices[key].items() %}<option value="{{ value }}" {{ "selected" if value == cfg[key] }}>{{ text }}</option>{% endfor %}
-    </select>
-    {% endfor %}
-    <p class="muted">"Follow the screen" uses the orientation the browser reports. Pick one when a
-      screen is mounted sideways but the browser doesn't rotate; the slideshow then rotates itself.</p>
+{{ section("Frame defaults", "Every frame uses these unless it changes them on its own page.") }}
+{{ settings_groups(settings, cfg.defaults, here) }}
 
-    <h2 style="margin-top:24px">Videos</h2>
-    <label for="convert_videos">Videos</label>
-    <select id="convert_videos" name="convert_videos">
-      {% for value, text in video_choices.items() %}<option value="{{ value }}" {{ "selected" if value == cfg.convert_videos }}>{{ text }}</option>{% endfor %}
-    </select>
-    <p class="muted">Re-encodes videos to H.264 sized for the frame's screen, so the Cozyla frame plays them
-      without a green bar. Applies to videos synced from now on; videos already on a frame stay as they are.</p>
-
-    <h2 style="margin-top:24px">Screen</h2>
-    <p class="muted">Defaults for kiosk frames, applied by the agent app on each frame. Each frame can
-      override them on its own page.</p>
-    {{ screen_fields(cfg.screen_raw, screen_choices) }}
-
-    <h2 style="margin-top:24px">Google Photos (Ambient API)</h2>
-    <p class="muted">Create an OAuth client in the Google Cloud console under Credentials → OAuth client ID,
-      with application type <b>TVs and Limited Input devices</b>, in a project with the
-      <b>Photos Ambient API</b> enabled. The project must be accepted into the Google Photos partner program.</p>
-    <label for="client_id">Client ID</label>
-    <input type="text" id="client_id" name="client_id" value="{{ cfg.client_id }}" autocomplete="off">
-
-    <label for="client_secret">Client secret</label>
-    <input type="password" id="client_secret" name="client_secret" autocomplete="new-password"
-           placeholder="{{ 'Saved; leave blank to keep it' if cfg.client_secret else '' }}">
-
-    <label for="device_name">Device name in Google Photos</label>
-    <input type="text" id="device_name" name="device_name" value="{{ cfg.device_name }}" maxlength="100">
-    <p class="muted">Used when the device is first registered. Changing it later doesn't rename an existing device.</p>
-
-    <p style="margin-top:18px"><button type="submit">Save</button></p>
-  </form>
-</section>
-<section id="frames">
-  <h2>Frames <a class="button secondary end" href="{{ url_for('frame_new') }}">Add a frame</a></h2>
-  {% if frames %}
-  <table>
-    {% for v in frames %}
-    <tr><td><a href="{{ url_for('frame_edit', frame_id=v.frame.id) }}">{{ v.frame.name }}</a></td>
-      <td class="muted">{{ v.kind_label.split(" (")[0] }}{% if v.frame.is_kiosk %} · kiosk{% endif %}</td></tr>
-    {% endfor %}
-  </table>
-  <p class="muted">Each frame's albums, display and screen settings are on its page.</p>
-  {% else %}<p class="muted">No frames yet.</p>{% endif %}
-</section>
-<section id="albums">
-  <h2>Albums</h2>
-  {% if albums %}
-  <table>
-    {% for a in albums %}
-    <tr><td><a href="{{ url_for('album_page', album_id=a.id) }}">{{ a.name }}</a></td><td class="muted">{{ a.kind_label }}</td></tr>
-    {% endfor %}
-  </table>
-  <p class="muted">Rename, remove and pick frames on each album's page; add albums on the <a href="{{ url_for('index') }}#albums">dashboard</a>.</p>
-  {% else %}<p class="muted">No albums yet. Add them on the <a href="{{ url_for('index') }}#albums">dashboard</a>.</p>{% endif %}
-</section>
 {% if cfg.source != "google_ambient" or (account and account.signed_in and account.device) %}
-<section id="test">
-  <h2>Listing test</h2>
-  <p class="muted">Lists every selected album in full and saves a snapshot.
-    To test change detection: run it, add or remove a photo in an album, then run it again.</p>
-  <form method="post" action="{{ url_for('test_list') }}" class="check">
-    <p>Download samples per album <input type="number" name="download" value="0" min="0" max="10"></p>
-    <p><button>Run listing</button></p>
-  </form>
-
-  {% if listing %}
-    <h2 style="margin-top:18px">Last run <span class="muted" style="font-weight:400">{{ listing.taken_at }}</span></h2>
-    <table>
-      <tr><th>Album</th><th>Items</th><th>Types</th></tr>
-      {% for s in listing.albums %}
-      <tr>
-        <td>{{ s.name }}</td>
-        <td>{{ s.count }}{% if not s.complete %} <span class="warn">(incomplete)</span>{% endif %}</td>
-        <td>{% for m, n in s.mimes %}{{ m }} × {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
-      </tr>
-      {% for r in s.samples %}
-      <tr><td></td><td colspan="2" class="muted">
-        {% if r.file %}sample {{ r.file }} · {{ r.kb }} KB
-        {% else %}<span class="error">sample download failed: {{ r.error }}</span>{% endif %}
-      </td></tr>
-      {% endfor %}
-      {% endfor %}
-    </table>
+{{ section("Listing test", "Lists every album in full and saves a snapshot. To test change detection, run it, add or remove a photo in an album, then run it again.") }}
+<form method="post" action="{{ url_for('test_list') }}" id="test">
+{% call group() %}{{ number_row("Download samples per album", "download", 0, 0, 10) }}{% endcall %}
+{% call buttons() %}<button class="btn">Run listing</button>{% endcall %}
+</form>
+{% if listing %}
+{% call group("Last run", footer="Taken " ~ listing.taken_at) %}
+  {% for s in listing.albums %}
+  {% set types = [] %}{% for m, n in s.mimes %}{% set _ = types.append("%s %d"|format(m, n)) %}{% endfor %}
+  {{ row(s.name, types | join(", "), value="%d items"|format(s.count) ~ ("" if s.complete else ", incomplete"), tone=none if s.complete else "warn") }}
+  {% for r in s.samples %}
+  {{ row("Sample " ~ (r.file or ""), r.error and "Download failed: " ~ r.error, value="%s KB"|format(r.kb) if r.file else "Failed", tone=none if r.file else "error") }}
+  {% endfor %}
+  {% endfor %}
+{% endcall %}
+{% endif %}
+{% if latest_diff %}
+{% set old_path, new_path, changes = latest_diff %}
+{% call group("Changes between the last two snapshots", footer=old_path.name ~ " to " ~ new_path.name) %}
+  {% for c in changes %}
+  {% if c.only_in %}{{ row(c.album, "Only in the " ~ c.only_in ~ " snapshot") }}
+  {% else %}
+  {{ row(c.album, "%d to %d items, %d added, %d removed"|format(c.old_count, c.new_count, c.added|length, c.removed|length),
+         value=none if c.reliable else "Removals unreliable", tone=none if c.reliable else "warn") }}
+  {% if c.added %}{{ row("Added", c.added | join(", ")) }}{% endif %}
+  {% if c.removed %}{{ row("Removed", c.removed | join(", ")) }}{% endif %}
   {% endif %}
-
-  {% if latest_diff %}
-    {% set old_path, new_path, changes = latest_diff %}
-    <h2 style="margin-top:18px">Changes between the last two snapshots</h2>
-    <p class="muted"><code>{{ old_path.name }}</code> → <code>{{ new_path.name }}</code></p>
-    {% for c in changes %}
-      {% if c.only_in %}
-        <p><b>{{ c.album }}</b>: only in the {{ c.only_in }} snapshot</p>
-      {% else %}
-        <p><b>{{ c.album }}</b>: {{ c.old_count }} → {{ c.new_count }} items,
-          <span class="ok">+{{ c.added|length }}</span> <span class="error">−{{ c.removed|length }}</span>
-          {% if not c.reliable %}<span class="warn">(a listing was incomplete, so removals are unreliable)</span>{% endif %}</p>
-        {% if c.added %}<ul class="ids">{% for i in c.added %}<li class="ok"><code>{{ i }}</code></li>{% endfor %}</ul>{% endif %}
-        {% if c.removed %}<ul class="ids">{% for i in c.removed %}<li class="error"><code>{{ i }}</code></li>{% endfor %}</ul>{% endif %}
-      {% endif %}
-    {% endfor %}
-  {% endif %}
-</section>
+  {% endfor %}
+{% endcall %}
+{% endif %}
 {% endif %}
 {% endblock %}

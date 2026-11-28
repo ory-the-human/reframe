@@ -1,10 +1,112 @@
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from .store import read_json, write_json
+
+_HHMM = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
+_YES_NO = {"yes": "On", "no": "Off"}
+
+
+def parse_schedule(value: str) -> Optional[tuple[str, str]]:
+    """'23:00-07:00' -> ('23:00', '07:00'): the screen is off from the first to the second.
+    None for 'always' (always on) and anything that isn't a schedule."""
+    off, _, on = value.partition("-")
+    if _HHMM.fullmatch(off) and _HHMM.fullmatch(on) and off != on:
+        return off, on
+    return None
+
+
+@dataclass(frozen=True)
+class Setting:
+    """A frame setting: a default in settings.json (or env KEY), overridable per frame in its `display`."""
+
+    key: str
+    label: str
+    kind: str  # choice | switch | number | schedule
+    default: str
+    group: str  # Slideshow | Videos | Screen
+    applies: str = "all"  # all | slideshow | kiosk
+    options: dict[str, str] = field(default_factory=dict)
+    range: tuple[int, int] = (0, 0)
+    unit: str = ""
+    hint: str = ""
+
+    @property
+    def name(self) -> str:
+        """The key in display_for/screen_for, the CLI flag and the slideshow URL parameter."""
+        return self.key.removeprefix("display_").removeprefix("screen_")
+
+    @property
+    def choices(self) -> dict[str, str]:
+        return _YES_NO if self.kind == "switch" else self.options
+
+    def check(self, value: str) -> Optional[str]:
+        """Why a value is invalid, or None ("" means the default)."""
+        if not value:
+            return None
+        if self.kind == "schedule":
+            if value != "always" and not parse_schedule(value):
+                return f"{self.name}: give 'always' or the hours the screen is off, like 23:00-07:00."
+        elif self.kind == "number":
+            low, high = self.range
+            if not value.isdigit() or not low <= int(value) <= high:
+                return f"{self.name}: give a whole number from {low} to {high}."
+        elif value not in self.choices:
+            return f"{self.name}: choose one of {', '.join(self.choices)}."
+        return None
+
+    def typed(self, value: str) -> Any:
+        """What the slideshow and the agent use; invalid values fall back to the default."""
+        if self.kind == "schedule":
+            schedule = parse_schedule(value)
+            return {"off": schedule[0], "on": schedule[1]} if schedule else None
+        if self.kind == "number":
+            low, high = self.range
+            try:
+                return max(low, min(high, int(value)))
+            except ValueError:
+                return int(self.default)
+        value = value if value in self.choices else self.default
+        return value == "yes" if self.kind == "switch" else value
+
+    def from_form(self, form: Mapping) -> Optional[str]:
+        """The value a submitted form sets, or None if the form doesn't carry this setting."""
+        values = form.getlist(self.key)
+        if not values:
+            return None
+        if self.kind == "schedule":
+            return f"{form.get('screen_off_at', '')}-{form.get('screen_on_at', '')}" if values[-1] == "yes" else "always"
+        # A switch posts a hidden "no" before its checkbox's "yes".
+        return values[-1].strip()
+
+
+FRAME_SETTINGS = (
+    Setting("display_interval", "Show each photo for", "number", "15", "Slideshow", "slideshow", range=(3, 3600), unit="seconds"),
+    Setting("display_layout", "Layout", "choice", "pair", "Slideshow", "slideshow",
+            {"pair": "Two photos together when they fit better", "single": "One photo at a time"}),
+    Setting("display_orientation", "Orientation", "choice", "auto", "Slideshow", "slideshow",
+            {"auto": "Follow the screen", "landscape": "Landscape", "portrait": "Portrait",
+             "landscape-flipped": "Landscape, upside down", "portrait-flipped": "Portrait, upside down"},
+            hint="Pick one when a screen is mounted sideways but its browser doesn't rotate"),
+    Setting("display_shuffle", "Shuffle", "switch", "yes", "Slideshow", "slideshow"),
+    Setting("display_fill", "Space around photos", "choice", "blur", "Slideshow", "slideshow",
+            {"blur": "A blurred copy of the photo", "black": "Black"}),
+    Setting("display_date", "Show the date taken", "switch", "yes", "Slideshow", "slideshow"),
+    Setting("display_sound", "Video sound", "switch", "no", "Slideshow", "kiosk"),
+    Setting("display_volume", "Volume", "number", "50", "Slideshow", "kiosk", range=(0, 100), unit="%",
+            hint="Also set on the frame: tap the slideshow, then the gear"),
+    Setting("convert_videos", "Convert videos for the screen", "switch", "yes", "Videos",
+            hint="Re-encodes new videos to H.264 sized for the frame, so Cozyla frames play them cleanly"),
+    Setting("screen_schedule", "Turn off at night", "schedule", "always", "Screen", "kiosk"),
+    Setting("screen_dark", "Turn off when the room is dark", "switch", "yes", "Screen", "kiosk",
+            hint="It comes back on when the room is lit; a touch wakes it for 5 minutes"),
+    Setting("screen_dark_lux", "Dark is below", "number", "5", "Screen", "kiosk", range=(0, 1000), unit="lux"),
+    Setting("screen_dark_seconds", "Dark for at least", "number", "30", "Screen", "kiosk", range=(5, 3600), unit="seconds"),
+)
+FRAME_SETTING = {s.key: s for s in FRAME_SETTINGS}
 
 # Settings editable from the web UI. Values saved there live in
 # /data/settings.json and take precedence over the environment, which only
@@ -17,122 +119,24 @@ SETTINGS = {
     # How frames reach this server, e.g. http://192.168.1.10:1992, for the
     # slideshow link written into kiosk frames.
     "public_url": ("PUBLIC_URL", ""),
-    # Default display settings for frames that run the reframe slideshow.
-    # Each frame can override them, and each screen can override them again
-    # in its slideshow URL.
-    "display_interval": ("DISPLAY_INTERVAL", "15"),
-    "display_layout": ("DISPLAY_LAYOUT", "pair"),
-    "display_orientation": ("DISPLAY_ORIENTATION", "auto"),
-    "display_shuffle": ("DISPLAY_SHUFFLE", "yes"),
-    "display_fill": ("DISPLAY_FILL", "blur"),
-    "display_date": ("DISPLAY_DATE", "yes"),
-    # Kiosk frames: play videos' sound, at this media volume (0-100).
-    "display_sound": ("DISPLAY_SOUND", "no"),
-    "display_volume": ("DISPLAY_VOLUME", "50"),
-    # Screen settings for kiosk frames, applied by the agent on the frame.
-    "screen_schedule": ("SCREEN_SCHEDULE", "always"),
-    "screen_dark": ("SCREEN_DARK", "yes"),
-    "screen_dark_lux": ("SCREEN_DARK_LUX", "5"),
-    "screen_dark_seconds": ("SCREEN_DARK_SECONDS", "30"),
-    # Re-encode videos for each frame's screen as they're synced; frames can override it.
-    "convert_videos": ("CONVERT_VIDEOS", "yes"),
     # Minutes between syncs; 0 turns the automatic sync off.
     "sync_minutes": ("SYNC_MINUTES", "60"),
+    **{s.key: (s.key.upper(), s.default) for s in FRAME_SETTINGS},
 }
 
-DISPLAY_KEYS = ("display_interval", "display_layout", "display_orientation", "display_shuffle", "display_fill", "display_date",
-                "display_sound", "display_volume")
-
-DISPLAY_CHOICES = {
-    "display_layout": {"pair": "Two photos together when they fit better", "single": "One photo at a time"},
-    "display_orientation": {
-        "auto": "Follow the screen",
-        "landscape": "Landscape",
-        "portrait": "Portrait",
-        "landscape-flipped": "Landscape, upside down",
-        "portrait-flipped": "Portrait, upside down",
-    },
-    "display_shuffle": {"yes": "Shuffle", "no": "In order"},
-    "display_fill": {"blur": "A blurred copy of the photo", "black": "Black"},
-    "display_date": {"yes": "Show the date each photo was taken", "no": "Don't show it"},
-    "display_sound": {"no": "Muted", "yes": "Play videos' sound"},
-}
+SYNC_CHOICES = {"0": "Never", "15": "Every 15 minutes", "30": "Every 30 minutes", "60": "Every hour",
+                "360": "Every 6 hours", "1440": "Once a day"}
 
 
-VIDEO_CHOICES = {"yes": "Convert them for the frame's screen", "no": "Copy them as downloaded"}
-
-SCREEN_KEYS = ("screen_schedule", "screen_dark", "screen_dark_lux", "screen_dark_seconds")
-
-SCREEN_CHOICES = {
-    "screen_dark": {"yes": "Turn the screen off when the room is dark", "no": "Ignore the room light"},
-}
-
-SCREEN_RANGES = {"screen_dark_lux": (0, 1000), "screen_dark_seconds": (5, 3600)}
-
-_HHMM = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
+def settings_for(frame: Any) -> list[Setting]:
+    """The settings that apply to a frame (FrameConfig)."""
+    applies = {"all": True, "slideshow": frame.shows_slideshow, "kiosk": frame.is_kiosk}
+    return [s for s in FRAME_SETTINGS if applies[s.applies]]
 
 
-def parse_schedule(value: str) -> Optional[tuple[str, str]]:
-    """'23:00-07:00' -> ('23:00', '07:00'): the screen is off from the first to the second.
-    None for 'always' (always on) and anything that isn't a schedule."""
-    off, _, on = value.partition("-")
-    if _HHMM.fullmatch(off) and _HHMM.fullmatch(on) and off != on:
-        return off, on
-    return None
-
-
-def check_screen(key: str, value: str) -> Optional[str]:
-    """Why a screen setting is invalid, or None ("" means the default)."""
-    if not value:
-        return None
-    if key == "screen_schedule":
-        if value != "always" and not parse_schedule(value):
-            return "schedule: give 'always' or the hours the screen is off, like 23:00-07:00."
-    elif key in SCREEN_CHOICES:
-        if value not in SCREEN_CHOICES[key]:
-            return f"{key}: choose one of {', '.join(SCREEN_CHOICES[key])}."
-    else:
-        low, high = SCREEN_RANGES[key]
-        if not value.isdigit() or not low <= int(value) <= high:
-            return f"{key}: give a whole number from {low} to {high}."
-    return None
-
-
-def screen_values(raw: dict[str, str]) -> dict[str, object]:
-    """Validate screen_* strings into what the frame's agent uses."""
-    schedule = parse_schedule(raw.get("screen_schedule", ""))
-    values: dict[str, object] = {
-        "schedule": {"off": schedule[0], "on": schedule[1]} if schedule else None,
-        "dark": raw.get("screen_dark") != "no",
-    }
-    for key, (low, high) in SCREEN_RANGES.items():
-        default = int(SETTINGS[key][1])
-        try:
-            value = max(low, min(high, int(raw.get(key, ""))))
-        except ValueError:
-            value = default
-        values[key[len("screen_"):]] = value
-    return values
-
-
-def display_values(raw: dict[str, str]) -> dict[str, object]:
-    """Validate display_* strings into what the slideshow page uses."""
-    try:
-        interval = max(3, min(3600, int(raw.get("display_interval", ""))))
-    except ValueError:
-        interval = 15
-    try:
-        volume = max(0, min(100, int(raw.get("display_volume", ""))))
-    except ValueError:
-        volume = 50
-    values: dict[str, object] = {"interval": interval, "volume": volume}
-    for key, choices in DISPLAY_CHOICES.items():
-        value = raw.get(key, "")
-        values[key[len("display_"):]] = value if value in choices else next(iter(choices))
-    values["shuffle"] = values["shuffle"] == "yes"
-    values["date"] = values["date"] == "yes"
-    values["sound"] = values["sound"] == "yes"
-    return values
+def typed(raw: Mapping[str, str], prefix: str) -> dict[str, Any]:
+    """The typed values of the settings whose key starts with `prefix`, by name."""
+    return {s.name: s.typed(raw.get(s.key, "")) for s in FRAME_SETTINGS if s.key.startswith(prefix)}
 
 
 @dataclass(frozen=True)
@@ -143,20 +147,11 @@ class Config:
     data_dir: Path
     device_name: str
     public_url: str
-    display_interval: str
-    display_layout: str
-    display_orientation: str
-    display_shuffle: str
-    display_fill: str
-    display_date: str
-    display_sound: str
-    display_volume: str
-    screen_schedule: str
-    screen_dark: str
-    screen_dark_lux: str
-    screen_dark_seconds: str
-    convert_videos: str
     sync_minutes: str
+    defaults: dict[str, str]  # frame settings, by key
+
+    def get(self, key: str) -> str:
+        return self.defaults[key] if key in FRAME_SETTING else getattr(self, key)
 
     @property
     def token_file(self) -> Path:
@@ -165,24 +160,6 @@ class Config:
     @property
     def device_file(self) -> Path:
         return self.data_dir / "device.json"
-
-    @property
-    def display_raw(self) -> dict[str, str]:
-        return {key: getattr(self, key) for key in DISPLAY_KEYS}
-
-    @property
-    def display(self) -> dict[str, object]:
-        """Default display settings, validated."""
-        return display_values(self.display_raw)
-
-    @property
-    def screen_raw(self) -> dict[str, str]:
-        return {key: getattr(self, key) for key in SCREEN_KEYS}
-
-    @property
-    def screen(self) -> dict[str, object]:
-        """Default screen settings for kiosk frames, validated."""
-        return screen_values(self.screen_raw)
 
     @property
     def sync_interval(self) -> int:
@@ -210,7 +187,8 @@ def settings_file() -> Path:
 def load() -> Config:
     saved = read_json(settings_file()) or {}
     values = {key: saved.get(key) or os.environ.get(env, default) for key, (env, default) in SETTINGS.items()}
-    return Config(data_dir=data_dir(), **values)
+    defaults = {key: values.pop(key) for key in FRAME_SETTING}
+    return Config(data_dir=data_dir(), defaults=defaults, **values)
 
 
 def save_settings(updates: dict[str, Any]) -> None:

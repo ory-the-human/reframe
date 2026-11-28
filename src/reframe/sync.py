@@ -317,3 +317,20 @@ def taken(cfg: Config, frame_id: str) -> dict[str, str]:
         return {Path(r[0]).name: r[1] for r in rows}
     finally:
         db.close()
+
+
+def album_files(cfg: Config) -> dict[str, list[Path]]:
+    """Files from each album that this server keeps for its browser and kiosk frames, newest first."""
+    if not (cfg.data_dir / "state.sqlite").exists():
+        return {}
+    db = _db(cfg)
+    try:
+        rows = db.execute("SELECT album_id, frame_id, frame_path FROM items ORDER BY first_seen DESC").fetchall()
+    finally:
+        db.close()
+    found: dict[str, dict[str, Path]] = {}
+    for album_id, frame_id, frame_path in rows:
+        path = frames_mod.web_media_dir(cfg.data_dir, frame_id) / Path(frame_path).name
+        if path.name not in found.setdefault(album_id, {}) and path.exists():
+            found[album_id][path.name] = path
+    return {album_id: list(paths.values()) for album_id, paths in found.items()}

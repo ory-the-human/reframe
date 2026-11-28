@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from ..config import Config, display_values, screen_values
+from ..config import FRAME_SETTING, Config, typed
 from ..store import read_json, write_json
 from .base import FrameError
 
@@ -34,8 +34,7 @@ class FrameConfig:
     # [{"id", "name"}]; empty means every album the source offers. Names are
     # kept for display so the dashboard needn't call the source.
     albums: list[dict[str, str]] = field(default_factory=list)
-    # Overrides of the display, screen and convert_videos defaults, keyed like
-    # config.DISPLAY_KEYS, config.SCREEN_KEYS and "convert_videos".
+    # Overrides of the frame setting defaults (config.FRAME_SETTINGS), by key.
     display: dict[str, str] = field(default_factory=dict)
     # cozyla_adb provisioned as a kiosk (frames/kiosk.py): the kiosk settings
     # password, the original state to restore, etc. Empty when not provisioned.
@@ -185,15 +184,18 @@ def validate(frame: FrameConfig) -> None:
         raise FrameError("a folder frame needs a folder")
 
 
+def settings(cfg: Config, frame: FrameConfig) -> dict[str, str]:
+    """The frame's raw setting values: its overrides on top of the defaults."""
+    return {**cfg.defaults, **{k: v for k, v in frame.display.items() if v}}
+
+
 def display_for(cfg: Config, frame: FrameConfig) -> dict[str, object]:
-    """The frame's display settings: its overrides on top of the defaults."""
-    return display_values({**cfg.display_raw, **{k: v for k, v in frame.display.items() if v}})
+    return typed(settings(cfg, frame), "display_")
 
 
 def converts_videos(cfg: Config, frame: FrameConfig) -> bool:
-    return (frame.display.get("convert_videos") or cfg.convert_videos) == "yes"
+    return FRAME_SETTING["convert_videos"].typed(settings(cfg, frame)["convert_videos"])
 
 
 def screen_for(cfg: Config, frame: FrameConfig) -> dict[str, object]:
-    """The frame's screen settings: its overrides on top of the defaults."""
-    return screen_values({**cfg.screen_raw, **{k: v for k, v in frame.display.items() if v}})
+    return typed(settings(cfg, frame), "screen_")

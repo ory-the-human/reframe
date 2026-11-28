@@ -1,0 +1,119 @@
+{# Building blocks for every admin page. Pages compose these instead of writing row markup. #}
+
+{% macro group(title=None, id=None, footer=None) -%}
+<section class="group-wrap"{% if id %} id="{{ id }}"{% endif %}>
+  {% if title %}<h2>{{ title }}</h2>{% endif %}
+  <div class="group">{{ caller() }}</div>
+  {% if footer %}<p class="foot">{{ footer }}</p>{% endif %}
+</section>
+{%- endmacro %}
+
+{% macro buttons() %}<div class="buttons">{{ caller() }}</div>{% endmacro %}
+
+{% macro section(title, text=None) -%}
+<h2 class="section">{{ title }}</h2>{% if text %}<p class="foot intro">{{ text }}</p>{% endif %}
+{%- endmacro %}
+
+{# kind: "frame" (a device) or "album"; size: s (sidebar), m (lists), l (page header). #}
+{% macro thumb(kind, id, src=None, size="m") -%}
+<span class="thumb {{ kind }} {{ size }}" style="--hue: {{ id|hue }}"><span>{% if src %}<img src="{{ src }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}</span></span>
+{%- endmacro %}
+
+{% macro dot(tone) %}<i class="dot {{ tone }}"></i>{% endmacro %}
+
+{% macro status(tone, text) %}<span class="value {{ tone }}">{{ dot(tone) }}{{ text }}</span>{% endmacro %}
+
+{# A list row: thumbnail, title and subtitle, then a value or status, a control (the call body) or a chevron. #}
+{% macro row(title, subtitle=None, href=None, thumb=None, value=None, tone=None, tag="div") -%}
+{% set tag = "a" if href else tag %}
+<{{ tag }} class="row"{% if href %} href="{{ href }}"{% endif %}>
+  {{- thumb or "" -}}
+  <span class="text"><span>{{ title }}</span>{% if subtitle %}<span class="sub">{{ subtitle }}</span>{% endif %}</span>
+  {%- if value is not none %}{% if tone %}{{ status(tone, value) }}{% else %}<span class="value">{{ value }}</span>{% endif %}{% endif %}
+  {%- if caller is defined %}<span class="control">{{ caller() }}</span>{% endif %}
+  {%- if href %}<span class="chev">›</span>{% endif %}
+</{{ tag }}>
+{%- endmacro %}
+
+{% macro header(title, subtitle, thumb, state=None) -%}
+<div class="header">
+  {{ thumb }}
+  <div><h2>{{ title }}</h2><p>{{ subtitle }}</p>{% if state %}{{ status(*state) }}{% endif %}</div>
+  {% if caller is defined %}<div class="control">{{ caller() }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{# A POST form with one button, a link, or a button that opens a dialog. #}
+{% macro button(label, action=None, href=None, style="", confirm=None, fields={}, dialog=None) -%}
+{% if action %}<form class="inline" method="post" action="{{ action }}"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>
+  {%- for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor -%}
+  <button class="btn {{ style }}">{{ label }}</button></form>
+{%- elif href %}<a class="btn {{ style }}" href="{{ href }}">{{ label }}</a>
+{%- else %}<button type="button" class="btn {{ style }}" onclick="document.getElementById('{{ dialog }}').showModal()">{{ label }}</button>{% endif %}
+{%- endmacro %}
+
+{# Without an action it only shows its content, with a Close button. #}
+{% macro dialog(id, title, action=None, submit=None) -%}
+<dialog id="{{ id }}"><form method="{{ 'post' if action else 'dialog' }}"{% if action %} action="{{ action }}"{% endif %}>
+  <h2>{{ title }}</h2>
+  {{ caller() }}
+  <div class="buttons">
+    <button type="button" class="btn" onclick="this.closest('dialog').close()">{{ "Cancel" if action else "Close" }}</button>
+    {% if action %}<button class="btn primary">{{ submit }}</button>{% endif %}
+  </div>
+</form></dialog>
+{%- endmacro %}
+
+{# The one on/off control. Its hidden "no" is posted when the box is off. #}
+{% macro switch(name, on, disabled=False) -%}
+<span class="switch"><input type="hidden" name="{{ name }}" value="no"{{ " disabled" if disabled }}><input type="checkbox" role="switch" name="{{ name }}" value="yes"{{ " checked" if on }}{{ " disabled" if disabled }}><i></i></span>
+{%- endmacro %}
+
+{% macro switch_row(title, name, on, subtitle=None, thumb=None, disabled=False) -%}
+{% call row(title, subtitle, thumb=thumb, tag="label") %}{{ switch(name, on, disabled) }}{% endcall %}
+{%- endmacro %}
+
+{# A switch row that applies itself by posting `fields` and the switch to `action`. #}
+{% macro toggle(action, title, name, on, fields={}, subtitle=None, thumb=None, disabled=False) -%}
+<form method="post" action="{{ action }}" data-auto>
+  {%- for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor -%}
+  {{ switch_row(title, name, on, subtitle, thumb, disabled) }}
+</form>
+{%- endmacro %}
+
+{% macro select_row(title, name, options, value, subtitle=None) -%}
+{% call row(title, subtitle, tag="label") %}<select name="{{ name }}">
+  {%- if value not in options %}<option selected>{{ value }}</option>{% endif %}
+  {%- for k, text in options.items() %}<option value="{{ k }}"{{ " selected" if k == value }}>{{ text }}</option>{% endfor -%}
+</select>{% endcall %}
+{%- endmacro %}
+
+{% macro number_row(title, name, value, min, max, unit="", subtitle=None) -%}
+{% call row(title, subtitle, tag="label") %}<input type="number" name="{{ name }}" value="{{ value }}" min="{{ min }}" max="{{ max }}">{% if unit %}<span class="unit">{{ unit }}</span>{% endif %}{% endcall %}
+{%- endmacro %}
+
+{# Text fields don't apply on change: give `save` for a button in the row, or put a Save button under the group. #}
+{% macro text_row(title, name, value="", type="text", placeholder="", save=None, subtitle=None) -%}
+{% call row(title, subtitle, tag="label") %}<input type="{{ type }}" name="{{ name }}" value="{{ value }}" placeholder="{{ placeholder }}" autocomplete="off">
+  {%- if save %}<button class="btn">{{ save }}</button>{% endif %}{% endcall %}
+{%- endmacro %}
+
+{# One row for a config.Setting, by its kind. #}
+{% macro setting_row(s, value) -%}
+{% if s.kind == "switch" %}{{ switch_row(s.label, s.key, value == "yes", s.hint) }}
+{% elif s.kind == "choice" %}{{ select_row(s.label, s.key, s.options, value, s.hint) }}
+{% elif s.kind == "number" %}{{ number_row(s.label, s.key, value, s.range[0], s.range[1], s.unit, s.hint) }}
+{% else %}{% set times = value.split("-") if "-" in value else ["23:00", "07:00"] %}
+{{ switch_row(s.label, s.key, "-" in value, s.hint) }}
+{% call row("Off from", tag="label") %}<input type="time" name="screen_off_at" value="{{ times[0] }}"><span class="unit">to</span><input type="time" name="screen_on_at" value="{{ times[1] }}">{% endcall %}
+{% endif %}
+{%- endmacro %}
+
+{# The settings as groups (Slideshow, Videos, Screen), each a form that applies on change. #}
+{% macro settings_groups(settings, values, action) -%}
+{% for name in settings | map(attribute="group") | unique %}
+{% call group(name) %}<form method="post" action="{{ action }}" data-auto>
+  {%- for s in settings if s.group == name %}{{ setting_row(s, values[s.key]) }}{% endfor -%}
+</form>{% endcall %}
+{% endfor %}
+{%- endmacro %}
