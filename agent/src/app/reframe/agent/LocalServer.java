@@ -20,21 +20,23 @@ import java.util.regex.Pattern;
 /**
  * Serves the Mirror's copy of the slideshow on 127.0.0.1, with the server's URL
  * layout (/show/<key>, /playlist, /media/<name>), for the kiosk, plus the page's
- * settings panel (POST /settings, GET and POST /wifi). The key isn't checked: only apps on the
+ * settings panel (POST /settings, GET and POST /wifi) and whether the screen is on (GET /screen). The key isn't checked: only apps on the
  * frame can connect, and they can all be root.
  */
 final class LocalServer extends Thread {
     static final int PORT = 1992;
-    private static final Pattern PATH = Pattern.compile("/show/[^/?]+(/playlist|/media/([^/?]+)|/settings|/wifi)?/?(\\?.*)?");
+    private static final Pattern PATH = Pattern.compile("/show/[^/?]+(/playlist|/media/([^/?]+)|/settings|/wifi|/screen)?/?(\\?.*)?");
     private static final Pattern RANGE = Pattern.compile("bytes=(\\d+)-(\\d*)");
 
     private final Mirror mirror;
     private final Wifi wifi;
+    private final Screen screen;
 
-    LocalServer(Mirror mirror, Wifi wifi) {
+    LocalServer(Mirror mirror, Wifi wifi, Screen screen) {
         super(AgentService.TAG + "-http");
         this.mirror = mirror;
         this.wifi = wifi;
+        this.screen = screen;
     }
 
     public void run() {
@@ -81,6 +83,8 @@ final class LocalServer extends Thread {
         } else if ("/settings".equals(m.group(1))) {
             mirror.change(new JSONObject(body));
             send(out, "200 OK", "application/json", "{\"ok\": true}".getBytes("UTF-8"));
+        } else if ("/screen".equals(m.group(1))) {
+            send(out, "200 OK", "application/json", ("{\"on\": " + screen.isOn() + "}").getBytes("UTF-8"));
         } else if ("/wifi".equals(m.group(1)) && "POST".equals(request[0])) {
             JSONObject j = new JSONObject(body);
             boolean ok = wifi.connect(j.getString("ssid"), j.optString("password"));

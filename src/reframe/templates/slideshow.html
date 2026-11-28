@@ -91,6 +91,7 @@
   var HISTORY_MAX = 50;
   var seq = 0;          // bumped per slide change, so a slow load can't override a newer one
   var agentHere = false; // served by the frame's agent, which offers the settings panel
+  var asleep = false;    // the frame's screen is off: no timer, and no video
 
   // Each screen can override the shared settings: ?interval=10&layout=pair&orientation=portrait&shuffle=no&fill=black&date=no
   function applyOverrides(d) {
@@ -212,7 +213,7 @@
 
   function schedule(ms) {
     clearTimeout(timer);
-    timer = setTimeout(advance, ms);
+    if (!asleep) timer = setTimeout(advance, ms);
   }
 
   function showVideo(item) {
@@ -255,7 +256,7 @@
   }
 
   function advance() {
-    if (newPage && reloadOnce(newPage)) return;
+    if (newPage && !asleep && reloadOnce(newPage)) return;
     if (pos < history.length - 1) { go(pos + 1); return; }
     var my = ++seq;
     if (!items.length) {
@@ -266,6 +267,9 @@
       return;
     }
     var item = nextItem();
+    // With the screen off, hold on a photo: a video could play its sound in the dark.
+    for (var n = 0; asleep && item.type === "video" && n < items.length; n++) item = nextItem();
+    if (asleep && item.type === "video") return;
     if (item.type === "video") { record([item.name]); showVideo(item); return; }
     loadImage(item).then(function (img) {
       if (my !== seq) return;
@@ -326,6 +330,20 @@
         if (first) { message.textContent = "Can't reach reframe. Retrying…"; setTimeout(function () { refresh(true); }, 10000); }
       });
   }
+
+  // The agent says when the frame's screen is off: the slideshow pauses until it's back on.
+  function checkScreen() {
+    if (!agentHere) return;
+    fetch(base + "/screen", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (s) {
+      if (s.on === !asleep) return;
+      asleep = !s.on;
+      var video = current && current.querySelector("video");
+      if (asleep && video) { video.pause(); pos = history.length - 1; advance(); }
+      else if (asleep) clearTimeout(timer);
+      else schedule(display.interval * 1000);
+    }).catch(function () {});
+  }
+  setInterval(checkScreen, 2000);
 
   window.addEventListener("resize", layoutStage);
   window.addEventListener("orientationchange", layoutStage);

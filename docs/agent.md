@@ -174,6 +174,11 @@ the last display settings and dates.
   An open page whose version differs reloads at its next photo (once per version), so
   a new page reaches frames and browsers within a minute or two, without a reboot.
   Agents before 0.4.0 don't pass it on, and pages from before it don't check it.
+- **Screen off:** the page asks the agent every 2 s (`GET /show/<key>/screen`,
+  `{"on": false}`) and pauses while the screen is off. A playing video stops and a
+  photo takes its place, so no sound plays in the dark or at once when the screen
+  comes back on; the slideshow carries on from that photo. From agent 0.4.1; older
+  agents answer 404 and the page keeps going as before.
 
 ## Settings on the frame
 
